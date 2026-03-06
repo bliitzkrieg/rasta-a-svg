@@ -120,6 +120,19 @@ export function SettingsPanel({ value, onChange }: SettingsPanelProps) {
           <option value="minimal-nodes">Minimal nodes</option>
         </select>
       </label>
+      <label>
+        Calibrate Colors
+        <input
+          type="checkbox"
+          checked={value.calibrate}
+          onChange={(event) =>
+            onChange({
+              ...value,
+              calibrate: event.target.checked
+            })
+          }
+        />
+      </label>
     </div>
   );
 }

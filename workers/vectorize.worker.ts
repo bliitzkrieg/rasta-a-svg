@@ -266,7 +266,7 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
       });
 
       const rawLayerColor = quantized.palette[index];
-      const layerColor = calibrateOutputColor(rawLayerColor);
+      const layerColor = payload.settings.calibrate ? calibrateOutputColor(rawLayerColor) : rawLayerColor;
       const layerCoverage = quantized.counts[index] / totalPixels;
       const lum = hexLuminance(layerColor);
       const coverageThreshold = lum > 170 || lum < 40 ? 0.0001 : 0.002;
@@ -336,19 +336,15 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
       payload: { id: payload.id, phase: "Exporting vectors", progress: 92 }
     });
 
-    let outputLayers = mergeLikeColoredLayers(
-      layers.map((layer) => ({
-        ...layer,
-        color: calibrateOutputColor(layer.color)
-      }))
-    );
+    let outputLayers = payload.settings.calibrate
+      ? mergeLikeColoredLayers(layers.map((layer) => ({ ...layer, color: calibrateOutputColor(layer.color) })))
+      : layers.map((layer) => ({ ...layer }));
     outputLayers = clampLayers(outputLayers);
-    outputLayers = mergeLikeColoredLayers(
-      outputLayers.map((layer) => ({
-        ...layer,
-        color: calibrateOutputColor(layer.color)
-      }))
-    );
+    if (payload.settings.calibrate) {
+      outputLayers = mergeLikeColoredLayers(
+        outputLayers.map((layer) => ({ ...layer, color: calibrateOutputColor(layer.color) }))
+      );
+    }
 
     // Paint broad/background regions first so detail layers remain visible.
     outputLayers = outputLayers.sort((a, b) => layerArea(b) - layerArea(a));

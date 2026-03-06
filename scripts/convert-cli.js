@@ -9,15 +9,16 @@ function parseArgs(argv) {
     input: "example/input",
     output: "example/generated",
     paletteSize: 16,
-    simplifyTolerance: 0.9,
-    smoothing: 0.1,
-    speckleThreshold: 6,
-    cornerThreshold: 22,
+    simplifyTolerance: 4.5,
+    smoothing: 0.35,
+    speckleThreshold: 10,
+    cornerThreshold: 50,
     minLayerCoveragePct: 0.003,
-    maxPathsPerLayer: 6,
+    maxPathsPerLayer: 5,
     minLayerCount: 5,
     maxLayerCount: 8,
-    targetPathsPerLayer: 4.25
+    targetPathsPerLayer: 4.0,
+    calibrate: false
   };
   for (let i = 2; i < argv.length; i += 1) {
     const key = argv[i];
@@ -26,6 +27,10 @@ function parseArgs(argv) {
       continue;
     }
     const name = key.slice(2);
+    if (name === "calibrate") {
+      out.calibrate = true;
+      continue;
+    }
     if (name in out && value && !value.startsWith("--")) {
       out[name] = Number.isNaN(Number(value)) ? value : Number(value);
       i += 1;
@@ -708,7 +713,7 @@ function convertImage(image, options) {
   for (let i = 0; i < quantized.palette.length; i += 1) {
     const coverage = quantized.counts[i] / totalPixels;
     const rawColor = quantized.palette[i];
-    const color = calibrateOutputColor(rawColor);
+    const color = options.calibrate ? calibrateOutputColor(rawColor) : rawColor;
     const lum = hexLuminance(color);
     const coverageThreshold = lum > 170 || lum < 40 ? 0.0001 : 0.002;
     if (coverage < coverageThreshold) {
@@ -769,11 +774,13 @@ function convertImage(image, options) {
     .sort((a, b) => b.coverage - a.coverage)
     .slice(0, options.maxLayerCount)
     .map((l) => ({ ...l, paths: [...l.paths] }));
-  layers = layers.map((layer) => ({
-    ...layer,
-    color: calibrateOutputColor(layer.color)
-  }));
-  layers = mergeLikeColoredLayers(layers);
+  if (options.calibrate) {
+    layers = layers.map((layer) => ({
+      ...layer,
+      color: calibrateOutputColor(layer.color)
+    }));
+    layers = mergeLikeColoredLayers(layers);
+  }
 
   for (const layer of layers) {
     const isDarkLayer = hexLuminance(layer.color) < 55;
@@ -809,11 +816,13 @@ function convertImage(image, options) {
     layer.paths = selectedPaths;
   }
 
-  layers = layers.map((layer) => ({
-    ...layer,
-    color: calibrateOutputColor(layer.color)
-  }));
-  layers = mergeLikeColoredLayers(layers);
+  if (options.calibrate) {
+    layers = layers.map((layer) => ({
+      ...layer,
+      color: calibrateOutputColor(layer.color)
+    }));
+    layers = mergeLikeColoredLayers(layers);
+  }
 
   const cleanLayers = layers.map((l) => ({
     name: l.name,

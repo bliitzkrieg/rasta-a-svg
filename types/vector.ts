@@ -17,6 +17,7 @@ export interface ConversionSettings {
   simplifyTolerancePx: number;
   cornerThresholdDeg: number;
   optimizePreset: OptimizePreset;
+  calibrate: boolean;
 }
 
 export interface VectorPoint {
@@ -98,10 +99,11 @@ export interface ConvertJobError {
 
 export const DEFAULT_SETTINGS: ConversionSettings = {
   paletteMode: "auto",
-  paletteSize: 8,
-  smoothing: 0.1,
-  speckleThresholdPx: 4,
-  simplifyTolerancePx: 0.7,
-  cornerThresholdDeg: 18,
-  optimizePreset: "balanced"
+  paletteSize: 16,
+  smoothing: 0.35,
+  speckleThresholdPx: 10,
+  simplifyTolerancePx: 4.5,
+  cornerThresholdDeg: 50,
+  optimizePreset: "balanced",
+  calibrate: false
 };
