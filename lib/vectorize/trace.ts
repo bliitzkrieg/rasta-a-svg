@@ -110,6 +110,55 @@ export function erodeMask(mask: Uint8Array, width: number, height: number, itera
   return current;
 }
 
+export function dilateMask(mask: Uint8Array, width: number, height: number, iterations: number): Uint8Array {
+  if (iterations <= 0) {
+    return mask;
+  }
+  let current = new Uint8Array(mask);
+  const neighbors = [
+    [0, 0],
+    [-1, -1],
+    [0, -1],
+    [1, -1],
+    [-1, 0],
+    [1, 0],
+    [-1, 1],
+    [0, 1],
+    [1, 1]
+  ];
+
+  for (let iter = 0; iter < iterations; iter += 1) {
+    const next = new Uint8Array(current.length);
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const idx = y * width + x;
+        if (!current[idx]) {
+          continue;
+        }
+        for (const [dx, dy] of neighbors) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || nx >= width || ny < 0 || ny >= height) {
+            continue;
+          }
+          next[ny * width + nx] = 1;
+        }
+      }
+    }
+    current = next;
+  }
+
+  return current;
+}
+
+export function closeMask(mask: Uint8Array, width: number, height: number, iterations: number): Uint8Array {
+  if (iterations <= 0) {
+    return mask;
+  }
+  const dilated = dilateMask(mask, width, height, iterations);
+  return erodeMask(dilated, width, height, iterations);
+}
+
 export function erodeMaskPreserveSmallComponents(
   mask: Uint8Array,
   width: number,

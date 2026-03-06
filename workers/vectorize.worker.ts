@@ -8,6 +8,7 @@ import { computeMetrics } from "@/lib/vectorize/metrics";
 import { quantizeImage } from "@/lib/vectorize/quantize";
 import { simplifyPath } from "@/lib/vectorize/simplify";
 import {
+  closeMask,
   labelsToMask,
   removeSmallComponents
 } from "@/lib/vectorize/trace";
@@ -283,7 +284,7 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
       }
       const isDarkLayer = hexLuminance(layerColor) < 55;
       const isLightLayer = hexLuminance(layerColor) > 240;
-      const layerSpeckleThreshold = isDarkLayer || isLightLayer ? 1 : payload.settings.speckleThresholdPx;
+      const layerSpeckleThreshold = isDarkLayer || isLightLayer ? 2 : payload.settings.speckleThresholdPx;
 
       const rawMask = labelsToMask(quantized.labels, payload.width, payload.height, index);
       if (isBackgroundFlood(rawMask, payload.width, payload.height) && hexLuminance(layerColor) < 220) {
@@ -295,7 +296,8 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
         payload.height,
         layerSpeckleThreshold
       );
-      const mask = cleanedMask;
+      const closeIterations = isDarkLayer || layerCoverage < 0.03 ? 1 : 0;
+      const mask = closeMask(cleanedMask, payload.width, payload.height, closeIterations);
       const polygons = maskToPolygons(mask, payload.width, payload.height);
 
       const layerTolerance = isDarkLayer
@@ -308,14 +310,14 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
         : isLightLayer
           ? Math.max(0, payload.settings.smoothing * 0.15)
           : payload.settings.smoothing;
-      const minPolygonArea = 0.15;
+      const minPolygonArea = 0.4;
 
       const paths = polygons
         .map((polygon) => {
           const rawArea = polygonArea(polygon);
-          const tinyFeature = rawArea < 900;
-          const tol = tinyFeature ? Math.min(0.9, layerTolerance * 0.35) : layerTolerance;
-          const smooth = tinyFeature ? Math.min(0.05, layerSmoothing * 0.2) : layerSmoothing;
+          const tinyFeature = rawArea < 500;
+          const tol = tinyFeature ? Math.min(1.2, layerTolerance * 0.6) : layerTolerance;
+          const smooth = tinyFeature ? Math.max(0.12, layerSmoothing * 0.5) : layerSmoothing;
           return simplifyPath(
             polygon,
             tol,
