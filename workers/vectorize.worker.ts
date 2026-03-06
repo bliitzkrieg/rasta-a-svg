@@ -283,7 +283,9 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
       }
       const isDarkLayer = hexLuminance(layerColor) < 55;
       const isLightLayer = hexLuminance(layerColor) > 240;
-      const layerSpeckleThreshold = isDarkLayer || isLightLayer ? 1 : payload.settings.speckleThresholdPx;
+      const layerSpeckleThreshold = isDarkLayer || isLightLayer
+        ? Math.max(2, Math.round(payload.settings.speckleThresholdPx * 0.6))
+        : payload.settings.speckleThresholdPx;
 
       const rawMask = labelsToMask(quantized.labels, payload.width, payload.height, index);
       if (isBackgroundFlood(rawMask, payload.width, payload.height) && hexLuminance(layerColor) < 220) {
@@ -308,14 +310,14 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
         : isLightLayer
           ? Math.max(0, payload.settings.smoothing * 0.15)
           : payload.settings.smoothing;
-      const minPolygonArea = 0.15;
+      const minPolygonArea = 1.2;
 
       const paths = polygons
         .map((polygon) => {
           const rawArea = polygonArea(polygon);
-          const tinyFeature = rawArea < 900;
-          const tol = tinyFeature ? Math.min(0.9, layerTolerance * 0.35) : layerTolerance;
-          const smooth = tinyFeature ? Math.min(0.05, layerSmoothing * 0.2) : layerSmoothing;
+          const tinyFeature = rawArea < 650;
+          const tol = tinyFeature ? Math.min(1.0, layerTolerance * 0.45) : layerTolerance;
+          const smooth = tinyFeature ? Math.max(0.08, layerSmoothing * 0.35) : layerSmoothing;
           return simplifyPath(
             polygon,
             tol,
