@@ -1,7 +1,6 @@
 import type { VectorPoint } from "@/types/vector";
 
 interface Edge {
-  id: number;
   start: VectorPoint;
   end: VectorPoint;
 }
@@ -10,66 +9,7 @@ function key(point: VectorPoint): string {
   return `${point.x},${point.y}`;
 }
 
-function pushEdge(edges: Edge[], start: VectorPoint, end: VectorPoint): void {
-  edges.push({ id: edges.length, start, end });
-}
-
-function direction(from: VectorPoint, to: VectorPoint): string {
-  const dx = Math.sign(to.x - from.x);
-  const dy = Math.sign(to.y - from.y);
-  return `${dx},${dy}`;
-}
-
-function rotateRight(dir: string): string {
-  if (dir === "1,0") return "0,1";
-  if (dir === "0,1") return "-1,0";
-  if (dir === "-1,0") return "0,-1";
-  return "1,0";
-}
-
-function rotateLeft(dir: string): string {
-  if (dir === "1,0") return "0,-1";
-  if (dir === "0,-1") return "-1,0";
-  if (dir === "-1,0") return "0,1";
-  return "1,0";
-}
-
-function pickNextEdge(currentDir: string, candidates: Edge[]): Edge | undefined {
-  if (!candidates.length) {
-    return undefined;
-  }
-
-  const right = rotateRight(currentDir);
-  const left = rotateLeft(currentDir);
-
-  let best: Edge | undefined;
-  let bestScore = Number.POSITIVE_INFINITY;
-  for (const candidate of candidates) {
-    const dir = direction(candidate.start, candidate.end);
-    let score = 3;
-    if (dir === right) {
-      score = 0;
-    } else if (dir === currentDir) {
-      score = 1;
-    } else if (dir === left) {
-      score = 2;
-    }
-    if (score < bestScore) {
-      bestScore = score;
-      best = candidate;
-    }
-  }
-
-  return best;
-}
-
-function removeEdge(list: Edge[], edgeId: number): void {
-  const index = list.findIndex((edge) => edge.id === edgeId);
-  if (index >= 0) {
-    list.splice(index, 1);
-  }
-}
-
+// Match CLI maskToPolygons behavior exactly.
 export function maskToPolygons(mask: Uint8Array, width: number, height: number): VectorPoint[][] {
   const edges: Edge[] = [];
 
@@ -80,84 +20,77 @@ export function maskToPolygons(mask: Uint8Array, width: number, height: number):
         continue;
       }
 
-      const topEmpty = y === 0 || !mask[idx - width];
-      const rightEmpty = x === width - 1 || !mask[idx + 1];
-      const bottomEmpty = y === height - 1 || !mask[idx + width];
-      const leftEmpty = x === 0 || !mask[idx - 1];
+      const top = y === 0 || !mask[idx - width];
+      const right = x === width - 1 || !mask[idx + 1];
+      const bottom = y === height - 1 || !mask[idx + width];
+      const left = x === 0 || !mask[idx - 1];
 
-      if (topEmpty) {
-        pushEdge(edges, { x, y }, { x: x + 1, y });
+      if (top) {
+        edges.push({ start: { x, y }, end: { x: x + 1, y } });
       }
-      if (rightEmpty) {
-        pushEdge(edges, { x: x + 1, y }, { x: x + 1, y: y + 1 });
+      if (right) {
+        edges.push({ start: { x: x + 1, y }, end: { x: x + 1, y: y + 1 } });
       }
-      if (bottomEmpty) {
-        pushEdge(edges, { x: x + 1, y: y + 1 }, { x, y: y + 1 });
+      if (bottom) {
+        edges.push({ start: { x: x + 1, y: y + 1 }, end: { x, y: y + 1 } });
       }
-      if (leftEmpty) {
-        pushEdge(edges, { x, y: y + 1 }, { x, y });
+      if (left) {
+        edges.push({ start: { x, y: y + 1 }, end: { x, y } });
       }
     }
   }
 
   const byStart = new Map<string, Edge[]>();
-  for (const edge of edges) {
-    const k = key(edge.start);
-    const group = byStart.get(k);
-    if (group) {
-      group.push(edge);
-    } else {
-      byStart.set(k, [edge]);
-    }
+  for (const e of edges) {
+    const k = key(e.start);
+    const v = byStart.get(k) ?? [];
+    v.push(e);
+    byStart.set(k, v);
   }
 
   const polygons: VectorPoint[][] = [];
 
   while (byStart.size > 0) {
-    const firstEntry = byStart.entries().next().value as [string, Edge[]];
-    if (!firstEntry) {
+    const first = byStart.entries().next().value as [string, Edge[]] | undefined;
+    if (!first) {
       break;
     }
-    const [startKey, startEdges] = firstEntry;
-    const startEdge = startEdges[0];
-    if (!startEdge) {
+    const [startKey, startEdges] = first;
+    const edge = startEdges.pop();
+    if (!edge) {
       byStart.delete(startKey);
       continue;
     }
-    removeEdge(startEdges, startEdge.id);
     if (!startEdges.length) {
       byStart.delete(startKey);
     }
 
-    const loop: VectorPoint[] = [startEdge.start, startEdge.end];
-    let current = startEdge.end;
-    let currentDir = direction(startEdge.start, startEdge.end);
+    const loop: VectorPoint[] = [edge.start, edge.end];
+    let cur = edge.end;
     let guard = 0;
 
     while (guard < 1_000_000) {
       guard += 1;
-      const nextKey = key(current);
-      const nextEdges = byStart.get(nextKey);
-      if (!nextEdges || nextEdges.length === 0) {
+      const k = key(cur);
+      const nextEdges = byStart.get(k);
+      if (!nextEdges || !nextEdges.length) {
         break;
       }
-      const next = pickNextEdge(currentDir, nextEdges);
+      const next = nextEdges.pop();
       if (!next) {
         break;
       }
-      removeEdge(nextEdges, next.id);
       if (!nextEdges.length) {
-        byStart.delete(nextKey);
+        byStart.delete(k);
       }
-      current = next.end;
-      currentDir = direction(next.start, next.end);
-      if (current.x === loop[0].x && current.y === loop[0].y) {
+      cur = next.end;
+      if (cur.x === loop[0].x && cur.y === loop[0].y) {
         break;
       }
-      loop.push(current);
+      loop.push(cur);
     }
 
-    if (loop.length >= 4 && guard < 1_000_000) {
+    if (loop.length >= 4) {
       polygons.push(loop);
     }
   }
