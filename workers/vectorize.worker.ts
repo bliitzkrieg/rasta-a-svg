@@ -257,13 +257,22 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
       payload.settings.paletteMode === "auto"
     );
 
-    const layers: VectorLayer[] = [];
+    // --- Port CLI convertImage logic exactly ---
     const simplifyTolerance = simplifyToleranceForPreset(
       payload.settings.simplifyTolerancePx,
       payload.settings.optimizePreset
     );
-    const total = quantized.palette.length;
+    const { speckleThresholdPx, smoothing, cornerThresholdDeg, calibrate } = payload.settings;
+    const maxPathsPerLayer = 6;
+    const minLayerCoveragePct = 0.003;
+    const minLayerCount = 5;
+    const maxLayerCount = 8;
     const totalPixels = payload.width * payload.height;
+    const total = quantized.palette.length;
+
+    type LayerCandidate = VectorLayer & { coverage: number; pathAreas: number[] };
+    const layerCandidates: LayerCandidate[] = [];
+
     for (let index = 0; index < total; index += 1) {
       postMessageTyped({
         type: "progress",
@@ -274,102 +283,113 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
         }
       });
 
-      const rawLayerColor = quantized.palette[index];
-      const layerColor = payload.settings.calibrate ? calibrateOutputColor(rawLayerColor) : rawLayerColor;
-      const layerCoverage = quantized.counts[index] / totalPixels;
-      const lum = hexLuminance(layerColor);
+      const rawColor = quantized.palette[index];
+      const color = calibrate ? calibrateOutputColor(rawColor) : rawColor;
+      const coverage = quantized.counts[index] / totalPixels;
+      const lum = hexLuminance(color);
       const coverageThreshold = lum > 170 || lum < 40 ? 0.0001 : 0.002;
-      if (layerCoverage < coverageThreshold) {
-        continue;
-      }
-      const isDarkLayer = hexLuminance(layerColor) < 55;
-      const isLightLayer = hexLuminance(layerColor) > 240;
-      const layerSpeckleThreshold = isDarkLayer || isLightLayer ? 2 : payload.settings.speckleThresholdPx;
+      if (coverage < coverageThreshold) continue;
 
-      const rawMask = labelsToMask(quantized.labels, payload.width, payload.height, index);
-      if (isBackgroundFlood(rawMask, payload.width, payload.height) && hexLuminance(layerColor) < 220) {
-        continue;
-      }
-      const cleanedMask = removeSmallComponents(
-        rawMask,
-        payload.width,
-        payload.height,
-        layerSpeckleThreshold
-      );
-      const closeIterations = isDarkLayer || layerCoverage < 0.03 ? 1 : 0;
-      const mask = closeMask(cleanedMask, payload.width, payload.height, closeIterations);
-      const polygons = maskToPolygons(mask, payload.width, payload.height);
-
+      const isDarkLayer = lum < 55;
+      const isLightLayer = lum > 240;
+      const layerSpeckle = isDarkLayer || isLightLayer ? 1 : speckleThresholdPx;
       const layerTolerance = isDarkLayer
         ? Math.max(0.28, simplifyTolerance * 0.4)
         : isLightLayer
           ? Math.max(0.35, simplifyTolerance * 0.45)
           : simplifyTolerance;
       const layerSmoothing = isDarkLayer
-        ? Math.max(0, payload.settings.smoothing * 0.1)
+        ? smoothing * 0.1
         : isLightLayer
-          ? Math.max(0, payload.settings.smoothing * 0.15)
-          : payload.settings.smoothing;
-      const minPolygonArea = 0.4;
+          ? smoothing * 0.15
+          : smoothing;
+      // CLI: minPolyArea = 1 for dark/light, 8 for midtone — key to removing dot artifacts
+      const minPolyArea = isDarkLayer || isLightLayer ? 1 : 8;
 
-      const paths = polygons
-        .map((polygon) => {
-          const rawArea = polygonArea(polygon);
-          const tinyFeature = rawArea < 500;
-          const tol = tinyFeature ? Math.min(1.2, layerTolerance * 0.6) : layerTolerance;
-          const smooth = tinyFeature ? Math.max(0.12, layerSmoothing * 0.5) : layerSmoothing;
-          return simplifyPath(
-            polygon,
-            tol,
-            smooth,
-            payload.settings.cornerThresholdDeg
-          ).map((point) => ({
-            x: Number(Math.max(0, Math.min(payload.width, point.x)).toFixed(2)),
-            y: Number(Math.max(0, Math.min(payload.height, point.y)).toFixed(2))
-          }));
+      const rawMask = labelsToMask(quantized.labels, payload.width, payload.height, index);
+      if (isBackgroundFlood(rawMask, payload.width, payload.height) && lum < 220) continue;
+
+      const mask = removeSmallComponents(rawMask, payload.width, payload.height, layerSpeckle);
+      const polygons = maskToPolygons(mask, payload.width, payload.height);
+
+      const pathsWithArea = polygons
+        .map((poly) => {
+          const pts = simplifyPath(poly, layerTolerance, layerSmoothing, cornerThresholdDeg)
+            .map((p) => ({
+              x: Number(Math.max(0, Math.min(payload.width, p.x)).toFixed(2)),
+              y: Number(Math.max(0, Math.min(payload.height, p.y)).toFixed(2))
+            }));
+          return { pts, area: polygonArea(pts) };
         })
-        .filter((points) => points.length >= 3)
-        .filter((points) => polygonArea(points) >= minPolygonArea)
-        .map((points) => ({
-          points,
-          closed: true,
-          nodeCount: points.length
-        }));
+        .filter(({ pts, area }) => pts.length >= 3 && area >= minPolyArea)
+        .sort((a, b) => b.area - a.area);
 
-      if (paths.length > 0) {
-        layers.push({
-          name: `COLOR_${String(index + 1).padStart(2, "0")}`,
-          color: layerColor,
-          paths
-        });
-      }
+      if (pathsWithArea.length === 0) continue;
+
+      layerCandidates.push({
+        name: `COLOR_${String(index + 1).padStart(2, "0")}`,
+        color,
+        coverage,
+        paths: pathsWithArea.map(({ pts, area }) => ({ points: pts, closed: true, nodeCount: pts.length + (area * 0) })),
+        pathAreas: pathsWithArea.map(({ area }) => area)
+      });
     }
+
+    // Layer selection: mirror CLI logic
+    const selected = layerCandidates.filter((l) => l.coverage >= minLayerCoveragePct)
+      .sort((a, b) => b.coverage - a.coverage);
+    if (selected.length < minLayerCount) {
+      const used = new Set(selected.map((l) => l.name));
+      const extras = layerCandidates
+        .filter((l) => !used.has(l.name))
+        .sort((a, b) => b.coverage - a.coverage)
+        .slice(0, minLayerCount - selected.length);
+      selected.push(...extras);
+    }
+    let layers = selected
+      .sort((a, b) => b.coverage - a.coverage)
+      .slice(0, maxLayerCount)
+      .map((l) => ({ ...l, paths: [...l.paths] }));
+
+    if (calibrate) {
+      layers = layers.map((l) => ({ ...l, color: calibrateOutputColor(l.color) }));
+      layers = mergeLikeColoredLayers(layers) as LayerCandidate[];
+    }
+
+    // Per-layer path capping: mirror CLI logic
+    for (const layer of layers) {
+      const isDarkLayer = hexLuminance(layer.color) < 55;
+      const cap = isDarkLayer ? Math.max(maxPathsPerLayer, 8) : maxPathsPerLayer;
+      if (layer.paths.length <= cap) continue;
+      const areas = (layer as LayerCandidate).pathAreas ?? layer.paths.map((p) => polygonArea(p.points));
+      const scored = layer.paths.map((p, i) => ({ p, area: areas[i] ?? 0 })).sort((a, b) => b.area - a.area);
+      if (!isDarkLayer) {
+        layer.paths = scored.slice(0, cap).map(({ p }) => p);
+        continue;
+      }
+      const detailReserve = 2;
+      const primary = scored.slice(0, Math.max(1, cap - detailReserve));
+      const detail = scored
+        .slice(Math.max(1, cap - detailReserve))
+        .filter(({ area }) => area >= 8 && area <= 320)
+        .sort((a, b) => a.area - b.area)
+        .slice(0, detailReserve);
+      layer.paths = [...primary, ...detail].map(({ p }) => p);
+    }
+
+    // Paint broad regions first so detail layers stay visible
+    const outputLayers = (layers as VectorLayer[]).sort((a, b) => layerArea(b) - layerArea(a));
 
     postMessageTyped({
       type: "progress",
       payload: { id: payload.id, phase: "Exporting vectors", progress: 92 }
     });
 
-    let outputLayers = payload.settings.calibrate
-      ? mergeLikeColoredLayers(layers.map((layer) => ({ ...layer, color: calibrateOutputColor(layer.color) })))
-      : layers.map((layer) => ({ ...layer }));
-
-    // Preserve-first strategy (stacked regions): do NOT aggressively clamp layers/paths.
-    // This retains small but important features (eyes, wing tips, thin accents).
-    if (payload.settings.calibrate) {
-      outputLayers = mergeLikeColoredLayers(
-        outputLayers.map((layer) => ({ ...layer, color: calibrateOutputColor(layer.color) }))
-      );
-    }
-
-    // Paint broad/background regions first so detail layers remain visible.
-    outputLayers = outputLayers.sort((a, b) => layerArea(b) - layerArea(a));
-
     const baseResult = {
       width: payload.width,
       height: payload.height,
-      layers: outputLayers,
-      metrics: computeMetrics(outputLayers, startedAt)
+      layers: outputLayers as VectorLayer[],
+      metrics: computeMetrics(outputLayers as VectorLayer[], startedAt)
     };
 
     const svg = toSVG(baseResult);
