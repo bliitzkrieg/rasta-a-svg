@@ -34,12 +34,12 @@ function simplifyToleranceForPreset(
   preset: "fidelity" | "balanced" | "minimal-nodes"
 ): number {
   if (preset === "fidelity") {
-    return Math.max(0.25, baseTolerance * 0.4);
+    return Math.max(0.25, baseTolerance * 0.55);
   }
   if (preset === "minimal-nodes") {
     return Math.max(1.2, baseTolerance * 1.7);
   }
-  return Math.max(0.45, baseTolerance * 0.65);
+  return Math.max(0.45, baseTolerance * 0.85);
 }
 
 function polygonArea(points: Array<{ x: number; y: number }>): number {
@@ -86,9 +86,9 @@ function clampLayers(layers: VectorLayer[]): VectorLayer[] {
     .sort((a, b) => b.score - a.score);
 
   const cappedLayers = scored.slice(0, 8).map((entry) => entry.layer);
-  const maxPathsPerLayer = 4;
-  const maxDarkPathsPerLayer = 8;
-  const detailReserveCount = 2;
+  const maxPathsPerLayer = 6;
+  const maxDarkPathsPerLayer = 14;
+  const detailReserveCount = 4;
 
   for (const layer of cappedLayers) {
     const isDarkLayer = hexLuminance(layer.color) < 55;
@@ -101,7 +101,14 @@ function clampLayers(layers: VectorLayer[]): VectorLayer[] {
       .sort((a, b) => b.area - a.area);
 
     if (!isDarkLayer) {
-      layer.paths = scoredPaths.slice(0, layerCap).map((entry) => entry.path);
+      const primaryCount = Math.max(1, layerCap - 1);
+      const primary = scoredPaths.slice(0, primaryCount);
+      const detail = scoredPaths
+        .slice(primaryCount)
+        .filter((entry) => entry.area >= 1 && entry.area <= 420)
+        .sort((a, b) => a.area - b.area)
+        .slice(0, 1);
+      layer.paths = [...primary, ...detail].map((entry) => entry.path);
       continue;
     }
 
@@ -109,7 +116,7 @@ function clampLayers(layers: VectorLayer[]): VectorLayer[] {
     const primary = scoredPaths.slice(0, primaryCount);
     const detail = scoredPaths
       .slice(primaryCount)
-      .filter((entry) => entry.area >= 8 && entry.area <= 320)
+      .filter((entry) => entry.area >= 1 && entry.area <= 420)
       .sort((a, b) => a.area - b.area)
       .slice(0, detailReserveCount);
     const selected = [...primary, ...detail];
@@ -300,7 +307,7 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
         : isLightLayer
           ? Math.max(0, payload.settings.smoothing * 0.15)
           : payload.settings.smoothing;
-      const minPolygonArea = isDarkLayer || isLightLayer ? 1 : 3;
+      const minPolygonArea = 1;
 
       const paths = polygons
         .map((polygon) =>
