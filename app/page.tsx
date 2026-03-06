@@ -72,7 +72,7 @@ export default function HomePage() {
   const [paused, setPaused] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
   const [hydrated, setHydrated] = useState(false);
-  const converterVersion = "r2v-linear-v12";
+  const converterVersion = "r2v-linear-v11";
 
   const workerRef = useRef<Worker | null>(null);
   const processingRef = useRef<string | null>(null);

@@ -1,6 +1,6 @@
 import { DEFAULT_SETTINGS, type PersistedAppState } from "@/types/vector";
 
-const STORAGE_KEY = "r2v-lab-state-v14";
+const STORAGE_KEY = "r2v-lab-state-v13";
 
 export function defaultPersistedState(): PersistedAppState {
   return {
