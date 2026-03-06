@@ -119,14 +119,13 @@ export function simplifyPath(
   if (points.length < 4) {
     return points;
   }
+  // Match CLI exactly: Douglas-Peucker + smooth points only. No Chaikin subdivision.
+  // Chaikin was fragmenting small features (eyes, wing tips) into dot artifacts.
   const closed = [...points, points[0]];
-  const simplified = douglasPeucker(closed, Math.max(0.4, tolerance));
-  const withoutDuplicateEnd = simplified.slice(0, -1);
-  const smoothed = smoothPoints(
-    withoutDuplicateEnd,
+  const simplified = douglasPeucker(closed, Math.max(0.4, tolerance)).slice(0, -1);
+  return smoothPoints(
+    simplified,
     Math.min(0.45, Math.max(0, smoothing)),
     Math.max(5, Math.min(170, cornerThresholdDeg))
   );
-  const chaikinIters = smoothing >= 0.25 ? 2 : smoothing >= 0.1 ? 1 : 0;
-  return chaikin(smoothed, chaikinIters, Math.max(10, cornerThresholdDeg));
 }
