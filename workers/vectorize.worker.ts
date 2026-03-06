@@ -283,9 +283,7 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
       }
       const isDarkLayer = hexLuminance(layerColor) < 55;
       const isLightLayer = hexLuminance(layerColor) > 240;
-      const layerSpeckleThreshold = isDarkLayer || isLightLayer
-        ? Math.max(3, Math.round(payload.settings.speckleThresholdPx * 0.75))
-        : payload.settings.speckleThresholdPx;
+      const layerSpeckleThreshold = isDarkLayer || isLightLayer ? 1 : payload.settings.speckleThresholdPx;
 
       const rawMask = labelsToMask(quantized.labels, payload.width, payload.height, index);
       if (isBackgroundFlood(rawMask, payload.width, payload.height) && hexLuminance(layerColor) < 220) {
@@ -310,20 +308,24 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
         : isLightLayer
           ? Math.max(0, payload.settings.smoothing * 0.15)
           : payload.settings.smoothing;
-      const minPolygonArea = 1;
+      const minPolygonArea = 0.15;
 
       const paths = polygons
-        .map((polygon) =>
-          simplifyPath(
+        .map((polygon) => {
+          const rawArea = polygonArea(polygon);
+          const tinyFeature = rawArea < 900;
+          const tol = tinyFeature ? Math.min(0.9, layerTolerance * 0.35) : layerTolerance;
+          const smooth = tinyFeature ? Math.min(0.05, layerSmoothing * 0.2) : layerSmoothing;
+          return simplifyPath(
             polygon,
-            layerTolerance,
-            layerSmoothing,
+            tol,
+            smooth,
             payload.settings.cornerThresholdDeg
           ).map((point) => ({
             x: Number(Math.max(0, Math.min(payload.width, point.x)).toFixed(2)),
             y: Number(Math.max(0, Math.min(payload.height, point.y)).toFixed(2))
-          }))
-        )
+          }));
+        })
         .filter((points) => points.length >= 3)
         .filter((points) => polygonArea(points) >= minPolygonArea)
         .map((points) => ({
