@@ -100,10 +100,10 @@ export interface ConvertJobError {
 export const DEFAULT_SETTINGS: ConversionSettings = {
   paletteMode: "auto",
   paletteSize: 16,
-  smoothing: 0.25,
-  speckleThresholdPx: 6,
-  simplifyTolerancePx: 3.2,
-  cornerThresholdDeg: 45,
-  optimizePreset: "balanced",
+  smoothing: 0.18,
+  speckleThresholdPx: 4,
+  simplifyTolerancePx: 2.2,
+  cornerThresholdDeg: 40,
+  optimizePreset: "fidelity",
   calibrate: false
 };
