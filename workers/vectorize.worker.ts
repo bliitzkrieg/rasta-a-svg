@@ -85,10 +85,10 @@ function clampLayers(layers: VectorLayer[]): VectorLayer[] {
     }))
     .sort((a, b) => b.score - a.score);
 
-  const cappedLayers = scored.slice(0, 8).map((entry) => entry.layer);
-  const maxPathsPerLayer = 6;
-  const maxDarkPathsPerLayer = 14;
-  const detailReserveCount = 4;
+  const cappedLayers = scored.slice(0, 12).map((entry) => entry.layer);
+  const maxPathsPerLayer = 12;
+  const maxDarkPathsPerLayer = 28;
+  const detailReserveCount = 8;
 
   for (const layer of cappedLayers) {
     const isDarkLayer = hexLuminance(layer.color) < 55;
@@ -101,13 +101,14 @@ function clampLayers(layers: VectorLayer[]): VectorLayer[] {
       .sort((a, b) => b.area - a.area);
 
     if (!isDarkLayer) {
-      const primaryCount = Math.max(1, layerCap - 1);
+      const localDetailReserve = 3;
+      const primaryCount = Math.max(1, layerCap - localDetailReserve);
       const primary = scoredPaths.slice(0, primaryCount);
       const detail = scoredPaths
         .slice(primaryCount)
-        .filter((entry) => entry.area >= 1 && entry.area <= 420)
+        .filter((entry) => entry.area >= 0.5 && entry.area <= 650)
         .sort((a, b) => a.area - b.area)
-        .slice(0, 1);
+        .slice(0, localDetailReserve);
       layer.paths = [...primary, ...detail].map((entry) => entry.path);
       continue;
     }
@@ -307,7 +308,7 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
         : isLightLayer
           ? Math.max(0, payload.settings.smoothing * 0.15)
           : payload.settings.smoothing;
-      const minPolygonArea = 1;
+      const minPolygonArea = 0.5;
 
       const paths = polygons
         .map((polygon) =>
