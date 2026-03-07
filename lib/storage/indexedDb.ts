@@ -69,10 +69,6 @@ export async function putResult(id: string, result: ConversionResult): Promise<v
   return put(RESULTS_STORE, id, result);
 }
 
-export async function getResult(id: string): Promise<ConversionResult | undefined> {
-  return get<ConversionResult>(RESULTS_STORE, id);
-}
-
 export async function deleteItemData(id: string): Promise<void> {
   await Promise.all([del(FILES_STORE, id), del(RESULTS_STORE, id)]);
 }

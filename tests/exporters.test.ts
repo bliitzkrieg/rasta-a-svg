@@ -82,4 +82,22 @@ describe("vector exporters", () => {
     expect(dxf).toContain("LWPOLYLINE");
     expect(dxf).toContain("COLOR_01");
   });
+
+  it("handles result with no layers without throwing", () => {
+    const emptyResult = { ...baseResult, layers: [] };
+    expect(() => toSVG(emptyResult)).not.toThrow();
+    expect(() => toEPSLevel2(emptyResult)).not.toThrow();
+    expect(() => toDXF(emptyResult)).not.toThrow();
+    expect(toSVG(emptyResult)).toContain("<svg");
+  });
+
+  it("handles layer with empty paths", () => {
+    const noPaths = {
+      ...baseResult,
+      layers: [{ name: "EMPTY", color: "#000000", paths: [] }],
+    };
+    expect(() => toSVG(noPaths)).not.toThrow();
+    expect(() => toEPSLevel2(noPaths)).not.toThrow();
+    expect(() => toDXF(noPaths)).not.toThrow();
+  });
 });

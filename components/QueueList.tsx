@@ -4,6 +4,7 @@ import { useRef } from "react";
 import { CheckCircle2, ImagePlus } from "lucide-react";
 import type { ImageQueueItem } from "@/types/vector";
 import { AppTooltip } from "./AppTooltip";
+import styles from "./QueueList.module.css";
 
 interface QueueListProps {
   items: ImageQueueItem[];
@@ -15,18 +16,10 @@ interface QueueListProps {
 }
 
 function statusText(item: ImageQueueItem): string {
-  if (item.status === "processing") {
-    return `${item.progress}%`;
-  }
-  if (item.status === "error") {
-    return "Failed";
-  }
-  if (item.status === "done") {
-    return "Done";
-  }
-  if (item.status === "canceled") {
-    return "Canceled";
-  }
+  if (item.status === "processing") return `${item.progress}%`;
+  if (item.status === "error") return "Failed";
+  if (item.status === "done") return "Done";
+  if (item.status === "canceled") return "Canceled";
   return "Queued";
 }
 
@@ -34,13 +27,12 @@ function StatusBadge({ item }: { item: ImageQueueItem }) {
   if (item.status === "done") {
     return (
       <AppTooltip content="Done">
-        <span className="queue-statusIcon" aria-label="Done">
+        <span className={styles.statusIcon} aria-label="Done">
           <CheckCircle2 size={16} strokeWidth={2.25} />
         </span>
       </AppTooltip>
     );
   }
-
   return <span>{statusText(item)}</span>;
 }
 
@@ -54,13 +46,20 @@ export function QueueList({
 }: QueueListProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const handleRowKeyDown = (event: React.KeyboardEvent, id: string) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onSelect(id);
+    }
+  };
+
   return (
-    <div className="panel queue">
-      <div className="queue-header">
+    <div className={`panel ${styles.queueList}`}>
+      <div className={styles.header}>
         <h2>Images</h2>
         <button
           type="button"
-          className="queue-addButton"
+          className={styles.addButton}
           onClick={() => inputRef.current?.click()}
         >
           <ImagePlus size={16} strokeWidth={2.1} />
@@ -73,31 +72,33 @@ export function QueueList({
           multiple
           hidden
           onChange={(event) => {
-            if (event.target.files) {
-              onFiles(event.target.files);
-            }
+            if (event.target.files) onFiles(event.target.files);
           }}
         />
       </div>
       {items.length === 0 ? (
-        <div className="queue-empty">
+        <div className={styles.empty}>
           <p>Drag PNG files anywhere on the page, or choose files to get started.</p>
           <span className="muted">Your uploaded images will appear here.</span>
         </div>
       ) : null}
-      <ul>
+      <ul className={styles.list} role="listbox" aria-label="Image queue">
         {items.map((item) => (
           <li
             key={item.id}
+            role="option"
+            aria-selected={item.id === selectedId}
+            tabIndex={0}
             data-active={item.id === selectedId}
+            className={styles.item}
             onClick={() => onSelect(item.id)}
-            className="queue-item"
+            onKeyDown={(e) => handleRowKeyDown(e, item.id)}
           >
             <div>
               <strong>{item.fileName}</strong>
               <p className="muted">{Math.round(item.size / 1024)} KB</p>
             </div>
-            <div className="queue-meta">
+            <div className={styles.meta}>
               <StatusBadge item={item} />
               {item.status === "error" ? (
                 <button
