@@ -24,8 +24,8 @@ function pointInPolygon(point: VectorPoint, polygon: VectorPoint[]): boolean {
     const xj = polygon[j].x;
     const yj = polygon[j].y;
     const intersects =
-      yi > point.y !== yj > point.y
-      && point.x < ((xj - xi) * (point.y - yi)) / ((yj - yi) || 1e-9) + xi;
+      yi > point.y !== yj > point.y &&
+      point.x < ((xj - xi) * (point.y - yi)) / (yj - yi || 1e-9) + xi;
     if (intersects) {
       inside = !inside;
     }
@@ -49,7 +49,11 @@ function dist(a: VectorPoint, b: VectorPoint): number {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
-function cornerAngle(prev: VectorPoint, curr: VectorPoint, next: VectorPoint): number {
+function cornerAngle(
+  prev: VectorPoint,
+  curr: VectorPoint,
+  next: VectorPoint,
+): number {
   const ax = prev.x - curr.x;
   const ay = prev.y - curr.y;
   const bx = next.x - curr.x;
@@ -63,7 +67,11 @@ function cornerAngle(prev: VectorPoint, curr: VectorPoint, next: VectorPoint): n
   return (Math.acos(cos) * 180) / Math.PI;
 }
 
-function clampHandle(anchor: VectorPoint, control: VectorPoint, maxDist: number): VectorPoint {
+function clampHandle(
+  anchor: VectorPoint,
+  control: VectorPoint,
+  maxDist: number,
+): VectorPoint {
   if (maxDist <= 0) {
     return { ...anchor };
   }
@@ -92,11 +100,11 @@ function toBezierPath(points: VectorPoint[]): string {
 
     let c1 = {
       x: p1.x + (p2.x - p0.x) / 6,
-      y: p1.y + (p2.y - p0.y) / 6
+      y: p1.y + (p2.y - p0.y) / 6,
     };
     let c2 = {
       x: p2.x - (p3.x - p1.x) / 6,
-      y: p2.y - (p3.y - p1.y) / 6
+      y: p2.y - (p3.y - p1.y) / 6,
     };
 
     // Clamp control handles to prevent overshoot loops/sliver wedges on thin outlines.
@@ -137,7 +145,7 @@ function buildRegions(paths: VectorPath[]): Region[] {
       path,
       absArea: Math.abs(signedArea(path.points)),
       parent: -1,
-      depth: 0
+      depth: 0,
     }))
     .sort((a, b) => b.absArea - a.absArea);
 
@@ -188,24 +196,67 @@ function buildRegions(paths: VectorPath[]): Region[] {
     .map((entry) => entry[1]);
 }
 
-export function toSVG(result: Omit<ConversionResult, "svg" | "eps" | "dxf">): string {
-  const layerNodes = result.layers
+export function toSVG(
+  result: Omit<ConversionResult, "svg" | "eps" | "dxf">,
+): string {
+  function isExactBlack(hex: string): boolean {
+    return hex.replace("#", "").toLowerCase() === "000000";
+  }
+
+  function hexLuminance(hex: string): number {
+    const value = hex.replace("#", "");
+    const r = Number.parseInt(value.slice(0, 2), 16) || 0;
+    const g = Number.parseInt(value.slice(2, 4), 16) || 0;
+    const b = Number.parseInt(value.slice(4, 6), 16) || 0;
+    return r * 0.299 + g * 0.587 + b * 0.114;
+  }
+
+  function strokeWidthForResult(width: number, height: number): number {
+    const size = Math.max(width, height);
+    if (size <= 256) return 0.4;
+    if (size <= 768) return 0.55;
+    return 0.7;
+  }
+
+  const blackStrokeWidth = strokeWidthForResult(result.width, result.height);
+
+  // Render lighter/fill layers first, darkest layers last.
+  // This ensures outlines sit on top instead of getting clipped by fills.
+  const orderedLayers = [...result.layers].sort((a, b) => {
+    const aBlack = isExactBlack(a.color);
+    const bBlack = isExactBlack(b.color);
+
+    if (aBlack && !bBlack) return 1;
+    if (!aBlack && bBlack) return -1;
+
+    return hexLuminance(b.color) - hexLuminance(a.color);
+  });
+
+  const layerNodes = orderedLayers
     .map((layer) => {
       const opacity = 1;
       const id = `${layer.color}${alphaHex(opacity)}`;
+      const useSeamStroke = isExactBlack(layer.color);
       const regions = buildRegions(layer.paths);
+
       const paths = regions
         .map((region) => {
           const d = [
             toBezierPath(region.outer.points),
-            ...region.holes.map((h) => toBezierPath(h.points))
+            ...region.holes.map((h) => toBezierPath(h.points)),
           ].join(" ");
+
+          if (useSeamStroke) {
+            return `<path fill="${layer.color}" opacity="${opacity.toFixed(2)}" fill-rule="evenodd" stroke="${layer.color}" stroke-width="${blackStrokeWidth.toFixed(2)}" stroke-linejoin="round" stroke-linecap="round" paint-order="stroke fill" d="${d}" />`;
+          }
+
           return `<path fill="${layer.color}" opacity="${opacity.toFixed(2)}" fill-rule="evenodd" d="${d}" />`;
         })
         .join("\n");
+
       return `<g id="${id}">\n${paths}\n</g>`;
     })
     .join("\n");
 
-  return `<?xml version="1.0" encoding="UTF-8" ?>\n<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\n<svg width="${result.width}pt" height="${result.height}pt" viewBox="0 0 ${result.width} ${result.height}" version="1.1" xmlns="http://www.w3.org/2000/svg">\n${layerNodes}\n</svg>\n`;
+  return `<?xml version="1.0" encoding="UTF-8" ?>\n<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\n<svg width="${result.width}pt" height="${result.height}pt" viewBox="0 0 ${result.width} ${result.height}" version="1.1" xmlns="http://www.w3.org/2000/svg" shape-rendering="geometricPrecision">\n${layerNodes}\n</svg>\n`;
 }

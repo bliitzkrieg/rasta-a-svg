@@ -612,18 +612,52 @@ function toBezier(points) {
   return `${d}Z`;
 }
 
+function hexLuminance(hex: string): number {
+  const value = hex.replace("#", "");
+  const r = Number.parseInt(value.slice(0, 2), 16) || 0;
+  const g = Number.parseInt(value.slice(2, 4), 16) || 0;
+  const b = Number.parseInt(value.slice(4, 6), 16) || 0;
+  return r * 0.299 + g * 0.587 + b * 0.114;
+}
+
+function isDarkOutlineColor(hex: string): boolean {
+  return hexLuminance(hex) < 40;
+}
+
+function strokeWidthForLayer(color: string, width: number, height: number): number {
+  const size = Math.max(width, height);
+
+  // small images need a slightly smaller seam-hiding stroke
+  if (size <= 256) return 0.45;
+  if (size <= 768) return 0.6;
+  return 0.75;
+}
+
 function toSVG(result) {
   const groups = result.layers
     .map((layer) => {
       const opacity = 1;
       const id = `${layer.color}${alphaHex(opacity)}`;
+      const isDark = isDarkOutlineColor(layer.color);
+      const seamStroke = strokeWidthForLayer(layer.color, result.width, result.height);
+
       const paths = layer.paths
-        .map((p) => `<path fill="${layer.color}" opacity="${opacity.toFixed(2)}" d=" ${toBezier(p.points)}" />`)
+        .map((p) => {
+          const d = toBezier(p.points);
+
+          if (isDark) {
+            return `<path fill="${layer.color}" opacity="${opacity.toFixed(2)}" stroke="${layer.color}" stroke-width="${seamStroke.toFixed(2)}" stroke-linejoin="round" stroke-linecap="round" paint-order="stroke fill" d="${d}" />`;
+          }
+
+          return `<path fill="${layer.color}" opacity="${opacity.toFixed(2)}" d="${d}" />`;
+        })
         .join("\n");
+
       return `<g id="${id}">\n${paths}\n</g>`;
     })
     .join("\n");
-  return `<?xml version="1.0" encoding="UTF-8" ?>\n<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\n<svg width="${result.width}pt" height="${result.height}pt" viewBox="0 0 ${result.width} ${result.height}" version="1.1" xmlns="http://www.w3.org/2000/svg">\n${groups}\n</svg>\n`;
+
+  return `<?xml version="1.0" encoding="UTF-8" ?>\n<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\n<svg width="${result.width}pt" height="${result.height}pt" viewBox="0 0 ${result.width} ${result.height}" version="1.1" xmlns="http://www.w3.org/2000/svg" shape-rendering="geometricPrecision">\n${groups}\n</svg>\n`;
 }
 
 function toEPS(result) {

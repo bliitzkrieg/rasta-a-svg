@@ -1,13 +1,13 @@
 import { DEFAULT_SETTINGS, type PersistedAppState } from "@/types/vector";
 
-const STORAGE_KEY = "r2v-lab-state-v26";
+const STORAGE_KEY = "r2v-lab-state-v33";
 
 export function defaultPersistedState(): PersistedAppState {
   return {
     queue: [],
     selectedId: undefined,
     sliderPosition: 50,
-    settings: DEFAULT_SETTINGS
+    settings: DEFAULT_SETTINGS,
   };
 }
 
@@ -23,8 +23,8 @@ export function loadPersistedState(): PersistedAppState {
       ...parsed,
       settings: {
         ...DEFAULT_SETTINGS,
-        ...parsed.settings
-      }
+        ...parsed.settings,
+      },
     };
   } catch {
     return defaultPersistedState();
@@ -38,7 +38,3 @@ export function savePersistedState(state: PersistedAppState): void {
 export function clearPersistedState(): void {
   localStorage.removeItem(STORAGE_KEY);
 }
-
-
-
-

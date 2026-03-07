@@ -11,13 +11,13 @@ import {
   deleteItemData,
   getFileBlob,
   putFileBlob,
-  putResult
+  putResult,
 } from "@/lib/storage/indexedDb";
 import {
   clearPersistedState,
   defaultPersistedState,
   loadPersistedState,
-  savePersistedState
+  savePersistedState,
 } from "@/lib/storage/localState";
 import type {
   ConversionResult,
@@ -26,7 +26,7 @@ import type {
   ConvertJobRequest,
   ConvertJobResult,
   ImageQueueItem,
-  PersistedAppState
+  PersistedAppState,
 } from "@/types/vector";
 import styles from "./page.module.css";
 
@@ -45,7 +45,7 @@ function makeQueueItem(file: File): ImageQueueItem {
     status: "queued",
     progress: 0,
     createdAt: now,
-    updatedAt: now
+    updatedAt: now,
   };
 }
 
@@ -59,7 +59,11 @@ function downloadString(content: string, fileName: string, type: string): void {
   URL.revokeObjectURL(url);
 }
 
-function withUpdated(items: ImageQueueItem[], id: string, updater: (item: ImageQueueItem) => ImageQueueItem) {
+function withUpdated(
+  items: ImageQueueItem[],
+  id: string,
+  updater: (item: ImageQueueItem) => ImageQueueItem,
+) {
   return items.map((item) => (item.id === id ? updater(item) : item));
 }
 
@@ -72,16 +76,18 @@ export default function HomePage() {
   const [paused, setPaused] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
   const [hydrated, setHydrated] = useState(false);
-  const converterVersion = "r2v-linear-v24";
+  const converterVersion = "r2v-linear-v33";
 
   const workerRef = useRef<Worker | null>(null);
   const processingRef = useRef<string | null>(null);
 
   const selectedItem = useMemo(
     () => state.queue.find((item) => item.id === state.selectedId),
-    [state.queue, state.selectedId]
+    [state.queue, state.selectedId],
   );
-  const selectedResult = state.selectedId ? results[state.selectedId] : undefined;
+  const selectedResult = state.selectedId
+    ? results[state.selectedId]
+    : undefined;
 
   useEffect(() => {
     const persisted = loadPersistedState();
@@ -89,7 +95,7 @@ export default function HomePage() {
     setState({
       ...defaultPersistedState(),
       settings: persisted.settings,
-      sliderPosition: persisted.sliderPosition
+      sliderPosition: persisted.sliderPosition,
     });
     setResults({});
     setIsOffline(!navigator.onLine);
@@ -145,7 +151,9 @@ export default function HomePage() {
 
     const result = results[current.id];
     if (result) {
-      const url = URL.createObjectURL(new Blob([result.svg], { type: "image/svg+xml" }));
+      const url = URL.createObjectURL(
+        new Blob([result.svg], { type: "image/svg+xml" }),
+      );
       revokedVector = url;
       setVectorUrl(url);
     } else {
@@ -163,9 +171,12 @@ export default function HomePage() {
   }, [selectedItem, results]);
 
   useEffect(() => {
-    const worker = new Worker(new URL("../workers/vectorize.worker.ts", import.meta.url), {
-      type: "module"
-    });
+    const worker = new Worker(
+      new URL("../workers/vectorize.worker.ts", import.meta.url),
+      {
+        type: "module",
+      },
+    );
     workerRef.current = worker;
 
     worker.onmessage = (event: MessageEvent<WorkerOutMessage>) => {
@@ -177,8 +188,8 @@ export default function HomePage() {
           queue: withUpdated(current.queue, message.payload.id, (item) => ({
             ...item,
             progress: message.payload.progress,
-            updatedAt: new Date().toISOString()
-          }))
+            updatedAt: new Date().toISOString(),
+          })),
         }));
       }
 
@@ -196,8 +207,8 @@ export default function HomePage() {
             progress: 100,
             metrics: result.metrics,
             error: undefined,
-            updatedAt: new Date().toISOString()
-          }))
+            updatedAt: new Date().toISOString(),
+          })),
         }));
       }
 
@@ -210,8 +221,8 @@ export default function HomePage() {
             ...item,
             status: "error",
             error: message.payload.error,
-            updatedAt: new Date().toISOString()
-          }))
+            updatedAt: new Date().toISOString(),
+          })),
         }));
       }
     };
@@ -243,8 +254,8 @@ export default function HomePage() {
         status: "processing",
         progress: 1,
         error: undefined,
-        updatedAt: new Date().toISOString()
-      }))
+        updatedAt: new Date().toISOString(),
+      })),
     }));
 
     void (async () => {
@@ -259,38 +270,45 @@ export default function HomePage() {
           width: decoded.width,
           height: decoded.height,
           pixels: decoded.pixels,
-          settings: state.settings
+          settings: state.settings,
         };
         worker.postMessage({ type: "convert", payload });
       } catch (error) {
         processingRef.current = null;
-        const messageText = error instanceof Error ? error.message : "Unexpected conversion failure.";
+        const messageText =
+          error instanceof Error
+            ? error.message
+            : "Unexpected conversion failure.";
         setState((current) => ({
           ...current,
           queue: withUpdated(current.queue, next.id, (item) => ({
             ...item,
             status: "error",
             error: messageText,
-            updatedAt: new Date().toISOString()
-          }))
+            updatedAt: new Date().toISOString(),
+          })),
         }));
       }
     })();
   }, [paused, state.queue, state.settings]);
 
   const onFiles = async (incoming: FileList | File[]) => {
-    const files = Array.from(incoming).filter((file) => file.type === "image/png");
+    const files = Array.from(incoming).filter(
+      (file) => file.type === "image/png",
+    );
     if (files.length === 0) {
       return;
     }
 
     const items = files.map((file) => makeQueueItem(file));
-    await Promise.all(items.map((item, index) => putFileBlob(item.id, files[index])));
+    await Promise.all(
+      items.map((item, index) => putFileBlob(item.id, files[index])),
+    );
 
     setState((current) => ({
       ...current,
       queue: [...current.queue, ...items],
-      selectedId: current.selectedId ?? items[0].id
+      selectedId: current.selectedId ?? items[0].id,
     }));
   };
 
@@ -302,8 +320,8 @@ export default function HomePage() {
         status: "queued",
         progress: 0,
         error: undefined,
-        updatedAt: new Date().toISOString()
-      }))
+        updatedAt: new Date().toISOString(),
+      })),
     }));
   };
 
@@ -319,7 +337,8 @@ export default function HomePage() {
       return {
         ...current,
         queue,
-        selectedId: current.selectedId === id ? queue[0]?.id : current.selectedId
+        selectedId:
+          current.selectedId === id ? queue[0]?.id : current.selectedId,
       };
     });
   };
@@ -333,7 +352,11 @@ export default function HomePage() {
       downloadString(selectedResult.svg, `${safeName}.svg`, "image/svg+xml");
     }
     if (type === "eps") {
-      downloadString(selectedResult.eps, `${safeName}.eps`, "application/postscript");
+      downloadString(
+        selectedResult.eps,
+        `${safeName}.eps`,
+        "application/postscript",
+      );
     }
     if (type === "dxf") {
       downloadString(selectedResult.dxf, `${safeName}.dxf`, "application/dxf");
@@ -355,17 +378,26 @@ export default function HomePage() {
         <div>
           <h1>Raster to Vector Lab</h1>
           <p>
-            Client-side PNG to layered SVG, EPS, and DXF with offline support. Converter:{" "}
-            <strong>{converterVersion}</strong>
+            Client-side PNG to layered SVG, EPS, and DXF with offline support.
+            Converter: <strong>{converterVersion}</strong>
           </p>
         </div>
         <div className={styles.badges}>
-          <span data-offline={isOffline}>{isOffline ? "Offline" : "Online"}</span>
+          <span data-offline={isOffline}>
+            {isOffline ? "Offline" : "Online"}
+          </span>
           <span>{paused ? "Queue paused" : activePhase}</span>
-          <button type="button" onClick={() => setPaused((current) => !current)}>
+          <button
+            type="button"
+            onClick={() => setPaused((current) => !current)}
+          >
             {paused ? "Resume queue" : "Pause queue"}
           </button>
-          <button type="button" className="danger" onClick={() => void onClearAll()}>
+          <button
+            type="button"
+            className="danger"
+            onClick={() => void onClearAll()}
+          >
             Clear local data
           </button>
         </div>
@@ -377,13 +409,17 @@ export default function HomePage() {
           <QueueList
             items={state.queue}
             selectedId={state.selectedId}
-            onSelect={(id) => setState((current) => ({ ...current, selectedId: id }))}
+            onSelect={(id) =>
+              setState((current) => ({ ...current, selectedId: id }))
+            }
             onRetry={onRetry}
             onRemove={onRemove}
           />
           <SettingsPanel
             value={state.settings}
-            onChange={(settings) => setState((current) => ({ ...current, settings }))}
+            onChange={(settings) =>
+              setState((current) => ({ ...current, settings }))
+            }
           />
         </div>
 
@@ -398,13 +434,11 @@ export default function HomePage() {
             }
             onExport={onExport}
           />
-          {selectedItem?.error ? <p className={styles.error}>Error: {selectedItem.error}</p> : null}
+          {selectedItem?.error ? (
+            <p className={styles.error}>Error: {selectedItem.error}</p>
+          ) : null}
         </div>
       </section>
     </main>
   );
 }
-
-
-
-
