@@ -49,6 +49,20 @@ function dist(a: VectorPoint, b: VectorPoint): number {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
+function cornerAngle(prev: VectorPoint, curr: VectorPoint, next: VectorPoint): number {
+  const ax = prev.x - curr.x;
+  const ay = prev.y - curr.y;
+  const bx = next.x - curr.x;
+  const by = next.y - curr.y;
+  const ma = Math.hypot(ax, ay);
+  const mb = Math.hypot(bx, by);
+  if (ma === 0 || mb === 0) {
+    return 180;
+  }
+  const cos = Math.max(-1, Math.min(1, (ax * bx + ay * by) / (ma * mb)));
+  return (Math.acos(cos) * 180) / Math.PI;
+}
+
 function clampHandle(anchor: VectorPoint, control: VectorPoint, maxDist: number): VectorPoint {
   if (maxDist <= 0) {
     return { ...anchor };
@@ -94,7 +108,18 @@ function toBezierPath(points: VectorPoint[]): string {
     c1 = clampHandle(p1, c1, maxH1);
     c2 = clampHandle(p2, c2, maxH2);
 
-    d += `C ${c1.x.toFixed(2)} ${c1.y.toFixed(2)} ${c2.x.toFixed(2)} ${c2.y.toFixed(2)} ${p2.x.toFixed(2)} ${p2.y.toFixed(2)} `;
+    // Join/corner safeguard: if either side is high-curvature (tight joint),
+    // avoid cubic smoothing on this segment to prevent tiny missing wedge slices.
+    const a1 = cornerAngle(p0, p1, p2);
+    const a2 = cornerAngle(p1, p2, p3);
+    const sharpJoin = a1 < 58 || a2 < 58;
+    const tinySegment = seg < 1.25;
+
+    if (sharpJoin || tinySegment) {
+      d += `L ${p2.x.toFixed(2)} ${p2.y.toFixed(2)} `;
+    } else {
+      d += `C ${c1.x.toFixed(2)} ${c1.y.toFixed(2)} ${c2.x.toFixed(2)} ${c2.y.toFixed(2)} ${p2.x.toFixed(2)} ${p2.y.toFixed(2)} `;
+    }
   }
   return `${d}Z`;
 }
