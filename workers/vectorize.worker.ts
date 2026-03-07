@@ -262,7 +262,8 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
       payload.settings.simplifyTolerancePx,
       payload.settings.optimizePreset
     );
-    const { speckleThresholdPx, smoothing, cornerThresholdDeg, calibrate } = payload.settings;
+    const { speckleThresholdPx, smoothing, cornerThresholdDeg, calibrate, converterStrategy } = payload.settings;
+    const useAdaptiveSimplify = converterStrategy === "adaptive" || converterStrategy === "high-fidelity";
     const maxPathsPerLayer = 6;
     const minLayerCoveragePct = 0.003;
     const minLayerCount = 5;
@@ -314,7 +315,15 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
 
       const pathsWithArea = polygons
         .map((poly) => {
-          const pts = simplifyPath(poly, layerTolerance, layerSmoothing, cornerThresholdDeg)
+          const rawArea = polygonArea(poly);
+          // Adaptive simplification: smaller shapes use lower epsilon to preserve detail
+          let adaptiveTol = layerTolerance;
+          if (useAdaptiveSimplify) {
+            if (rawArea < 100) adaptiveTol = Math.min(layerTolerance, 0.3);
+            else if (rawArea < 500) adaptiveTol = Math.min(layerTolerance, 0.6);
+            else if (rawArea < 2000) adaptiveTol = Math.min(layerTolerance, 1.0);
+          }
+          const pts = simplifyPath(poly, adaptiveTol, layerSmoothing, cornerThresholdDeg)
             .map((p) => ({
               x: Number(Math.max(0, Math.min(payload.width, p.x)).toFixed(2)),
               y: Number(Math.max(0, Math.min(payload.height, p.y)).toFixed(2))

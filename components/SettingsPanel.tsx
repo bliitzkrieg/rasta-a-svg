@@ -133,6 +133,22 @@ export function SettingsPanel({ value, onChange }: SettingsPanelProps) {
           }
         />
       </label>
+      <label>
+        Converter Strategy
+        <select
+          value={value.converterStrategy}
+          onChange={(event) =>
+            onChange({
+              ...value,
+              converterStrategy: event.target.value as ConversionSettings["converterStrategy"]
+            })
+          }
+        >
+          <option value="standard">Standard — fast, basic</option>
+          <option value="adaptive">Adaptive — adaptive simplification per shape size</option>
+          <option value="high-fidelity">High Fidelity — adaptive + evenodd holes</option>
+        </select>
+      </label>
     </div>
   );
 }

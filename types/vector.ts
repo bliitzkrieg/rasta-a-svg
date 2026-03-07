@@ -7,6 +7,8 @@ export type QueueStatus =
 
 export type OptimizePreset = "fidelity" | "balanced" | "minimal-nodes";
 
+export type ConverterStrategy = "standard" | "adaptive" | "high-fidelity";
+
 export type PaletteMode = "auto" | "fixed";
 
 export interface ConversionSettings {
@@ -18,6 +20,7 @@ export interface ConversionSettings {
   cornerThresholdDeg: number;
   optimizePreset: OptimizePreset;
   calibrate: boolean;
+  converterStrategy: ConverterStrategy;
 }
 
 export interface VectorPoint {
@@ -105,5 +108,6 @@ export const DEFAULT_SETTINGS: ConversionSettings = {
   simplifyTolerancePx: 1.8,
   cornerThresholdDeg: 40,
   optimizePreset: "fidelity",
-  calibrate: false
+  calibrate: false,
+  converterStrategy: "high-fidelity"
 };
