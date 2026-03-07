@@ -72,6 +72,58 @@
   font-size: 0.8rem;
 }
 
+.clerkControls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.clerkControls :global(button),
+.clerkControls :global(a) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2rem;
+  height: 2rem;
+  padding: 0 0.75rem;
+  font-size: 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--ink);
+  box-sizing: border-box;
+}
+
+.clerkControls :global(button:hover),
+.clerkControls :global(a:hover) {
+  border-color: var(--brand-primary);
+  transform: translateY(0px);
+}
+
+.clerkAvatarWrap {
+  display: inline-flex;
+  align-items: center;
+}
+
+.clerkAvatarWrap :global(button) {
+  background: transparent !important;
+  border: none !important;
+  padding: 0;
+  transform: translateY(1px);
+}
+
+.clerkAvatarWrap :global(button:hover) {
+  background: color-mix(in srgb, var(--line) 20%, transparent) !important;
+  border: none !important;
+  transform: translateY(1px);
+}
+
+.clerkAvatar {
+  width: 2rem;
+  height: 2rem;
+  border: none;
+}
+
 .workspace {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 360px;

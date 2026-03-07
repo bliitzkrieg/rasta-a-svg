@@ -7,6 +7,7 @@ import { QueueList } from "@/components/QueueList";
 import { ResultDetail } from "@/components/ResultDetail";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { Show, SignInButton, SignUpButton, UserButton } from "@clerk/nextjs";
 import { useConversionWorker } from "@/hooks/useConversionWorker";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { usePersistedPreferences } from "@/hooks/usePersistedPreferences";
@@ -16,14 +17,10 @@ import { useTopbarHeight } from "@/hooks/useTopbarHeight";
 import { downloadString } from "@/lib/download";
 import { makeQueueItem, withUpdated } from "@/lib/queueUtils";
 import {
-  clearAllData,
   deleteItemData,
   putFileBlob,
 } from "@/lib/storage/indexedDb";
-import {
-  clearPersistedState,
-  defaultPersistedState,
-} from "@/lib/storage/localState";
+import { defaultPersistedState } from "@/lib/storage/localState";
 import type { ConversionResult, PersistedAppState } from "@/types/vector";
 import styles from "./page.module.css";
 
@@ -176,13 +173,6 @@ export default function HomePage() {
     }
   };
 
-  const onClearAll = async () => {
-    await clearAllData();
-    clearPersistedState();
-    setResults({});
-    setAppState(defaultPersistedState());
-  };
-
   return (
     <main
       ref={pageRef}
@@ -220,13 +210,23 @@ export default function HomePage() {
                 setAppState((current) => ({ ...current, theme }))
               }
             />
-            <button
-              type="button"
-              className="danger"
-              onClick={() => void onClearAll()}
-            >
-              Clear data
-            </button>
+            <span className={styles.clerkControls}>
+              <Show when="signed-out">
+                <SignInButton mode="modal" />
+                <SignUpButton mode="modal" />
+              </Show>
+              <Show when="signed-in">
+                <span className={styles.clerkAvatarWrap}>
+                  <UserButton
+                    appearance={{
+                      elements: {
+                        avatarBox: styles.clerkAvatar,
+                      },
+                    }}
+                  />
+                </span>
+              </Show>
+            </span>
           </div>
         </div>
       </header>
