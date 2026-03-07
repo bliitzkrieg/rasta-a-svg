@@ -13,6 +13,7 @@ interface PreviewPaneProps {
   sliderPosition: number;
   onSliderPositionChange: (value: number) => void;
   onExport: (type: "svg" | "eps" | "dxf") => void;
+  onFiles?: (files: FileList | File[]) => void;
 }
 
 export function PreviewPane({
@@ -25,6 +26,7 @@ export function PreviewPane({
   sliderPosition,
   onSliderPositionChange,
   onExport,
+  onFiles,
 }: PreviewPaneProps) {
   return (
     <div className="panel preview-stage">
@@ -38,6 +40,7 @@ export function PreviewPane({
         onSliderPositionChange={onSliderPositionChange}
         aspectRatio={result ? result.width / result.height : undefined}
         onExport={onExport}
+        onFiles={onFiles}
       />
     </div>
   );

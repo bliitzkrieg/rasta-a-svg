@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef } from "react";
 import type { QueueStatus } from "@/types/vector";
 import { ExportButtons } from "./ExportButtons";
 
@@ -13,6 +14,7 @@ interface CompareSliderProps {
   onSliderPositionChange: (value: number) => void;
   aspectRatio?: number;
   onExport: (type: "svg" | "eps" | "dxf") => void;
+  onFiles?: (files: FileList | File[]) => void;
 }
 
 export function CompareSlider({
@@ -25,11 +27,30 @@ export function CompareSlider({
   onSliderPositionChange,
   aspectRatio,
   onExport,
+  onFiles,
 }: CompareSliderProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
   if (!originalUrl) {
     return (
       <div className="compare-wrap compare-empty">
-        <div className="compare-canvas compare-canvas-empty">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/png"
+          multiple
+          hidden
+          onChange={(e) => {
+            if (e.target.files && e.target.files.length > 0) {
+              onFiles?.(e.target.files);
+              e.target.value = "";
+            }
+          }}
+        />
+        <button
+          type="button"
+          className="compare-canvas compare-canvas-empty"
+          onClick={() => fileInputRef.current?.click()}
+        >
           <div className="empty-state">
             <div className="empty-stateAmbient" aria-hidden="true">
               <span className="empty-stateGlow empty-stateGlowPrimary" />
@@ -43,11 +64,11 @@ export function CompareSlider({
               <span className="empty-eyebrow">Raster in. Vector out.</span>
               <h2>Turn PNGs into clean, layered vectors in seconds.</h2>
               <div className="muted">
-                Drop your files anywhere to get started.
+                Drop or click to choose PNG files.
               </div>
             </div>
           </div>
-        </div>
+        </button>
       </div>
     );
   }

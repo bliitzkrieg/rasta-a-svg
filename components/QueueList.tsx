@@ -1,7 +1,8 @@
 "use client";
 
-import { useRef } from "react";
-import { CheckCircle2, ImagePlus } from "lucide-react";
+import { useRef, useState } from "react";
+import * as AlertDialog from "@radix-ui/react-alert-dialog";
+import { CheckCircle2, Download, ImagePlus, Trash2 } from "lucide-react";
 import type { ImageQueueItem } from "@/types/vector";
 import { AppTooltip } from "./AppTooltip";
 import styles from "./QueueList.module.css";
@@ -13,6 +14,9 @@ interface QueueListProps {
   onRetry: (id: string) => void;
   onRemove: (id: string) => void;
   onFiles: (files: FileList | File[]) => void;
+  onDownloadAll: () => void;
+  onDeleteAll: () => void;
+  downloadAllDisabled: boolean;
 }
 
 function statusText(item: ImageQueueItem): string {
@@ -43,8 +47,14 @@ export function QueueList({
   onRetry,
   onRemove,
   onFiles,
+  onDownloadAll,
+  onDeleteAll,
+  downloadAllDisabled,
 }: QueueListProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const hasProcessedImages = items.some((i) => i.status === "done");
+  const downloadDisabled = downloadAllDisabled || !hasProcessedImages;
 
   const handleRowKeyDown = (event: React.KeyboardEvent, id: string) => {
     if (event.key === "Enter" || event.key === " ") {
@@ -125,6 +135,67 @@ export function QueueList({
           </li>
         ))}
       </ul>
+      {items.length > 0 ? (
+        <div className={styles.footer}>
+          <button
+            type="button"
+            className={styles.footerButton}
+            disabled={downloadDisabled}
+            onClick={onDownloadAll}
+            title={
+              downloadAllDisabled
+                ? "Wait for processing to finish"
+                : "Download all processed images as a zip"
+            }
+          >
+            <Download size={14} strokeWidth={2.1} />
+            Download all
+          </button>
+          <AlertDialog.Root open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+            <AlertDialog.Trigger asChild>
+              <button
+                type="button"
+                className={`${styles.footerButton} danger`}
+                title="Remove all images"
+              >
+                <Trash2 size={14} strokeWidth={2.1} />
+                Delete all
+              </button>
+            </AlertDialog.Trigger>
+            <AlertDialog.Portal>
+              <AlertDialog.Overlay className={styles.dialogOverlay} />
+              <AlertDialog.Content className={styles.dialogContent}>
+                <AlertDialog.Title className={styles.dialogTitle}>
+                  Delete all images?
+                </AlertDialog.Title>
+                <AlertDialog.Description className={styles.dialogDescription}>
+                  This will remove all images from the queue and clear their results. This
+                  cannot be undone.
+                </AlertDialog.Description>
+                <div className={styles.dialogActions}>
+                  <AlertDialog.Cancel asChild>
+                    <button type="button" className={styles.dialogCancel}>
+                      Cancel
+                    </button>
+                  </AlertDialog.Cancel>
+                  <AlertDialog.Action asChild>
+                    <button
+                      type="button"
+                      className={styles.dialogConfirm}
+                      onClick={() => {
+                        onDeleteAll();
+                        setDeleteDialogOpen(false);
+                      }}
+                    >
+                      Delete all
+                    </button>
+                  </AlertDialog.Action>
+                </div>
+              </AlertDialog.Content>
+            </AlertDialog.Portal>
+          </AlertDialog.Root>
+        </div>
+      ) : null}
     </div>
   );
 }

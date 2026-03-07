@@ -119,6 +119,121 @@
   color: var(--brand-primary);
 }
 
+.footer {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+}
+
+.footerButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  flex: 1;
+  justify-content: center;
+}
+
+.footerButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* AlertDialog */
+.dialogOverlay {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in srgb, var(--ink) 40%, transparent);
+  animation: overlayIn 0.15s ease-out;
+}
+
+.dialogContent {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(90vw, 380px);
+  padding: 1.25rem 1.35rem;
+  border-radius: 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: 0 20px 40px color-mix(in srgb, var(--ink) 25%, transparent);
+  animation: contentIn 0.2s ease-out;
+}
+
+.dialogTitle {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.dialogDescription {
+  margin: 0 0 1.25rem;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: var(--ink-muted);
+}
+
+.dialogActions {
+  display: flex;
+  gap: 0.6rem;
+  justify-content: flex-end;
+}
+
+.dialogCancel {
+  padding: 0.5rem 1rem;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  background: color-mix(in srgb, var(--ink-muted) 12%, var(--panel));
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+
+.dialogCancel:hover {
+  background: color-mix(in srgb, var(--ink-muted) 20%, var(--panel));
+}
+
+.dialogConfirm {
+  padding: 0.5rem 1rem;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  background: var(--danger);
+  border: 1px solid color-mix(in srgb, var(--danger) 70%, transparent);
+  color: #fff;
+}
+
+.dialogConfirm:hover {
+  background: color-mix(in srgb, #000 12%, var(--danger));
+}
+
+@keyframes overlayIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes contentIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
 @media (max-width: 720px) {
   .header {
     align-items: flex-start;

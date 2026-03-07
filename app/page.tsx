@@ -14,9 +14,10 @@ import { usePersistedPreferences } from "@/hooks/usePersistedPreferences";
 import { usePreviewUrls } from "@/hooks/usePreviewUrls";
 import { useServiceWorkerCleanup } from "@/hooks/useServiceWorkerCleanup";
 import { useTopbarHeight } from "@/hooks/useTopbarHeight";
-import { downloadString } from "@/lib/download";
+import { downloadAsZip, downloadString } from "@/lib/download";
 import { makeQueueItem, withUpdated } from "@/lib/queueUtils";
 import {
+  clearAllData,
   deleteItemData,
   putFileBlob,
 } from "@/lib/storage/indexedDb";
@@ -173,6 +174,35 @@ export default function HomePage() {
     }
   };
 
+  const hasActiveProcessing = appState.queue.some(
+    (item) => item.status === "processing",
+  );
+
+  const onDownloadAll = () => {
+    const entries: { path: string; content: string }[] = [];
+    for (const item of appState.queue) {
+      if (item.status !== "done") continue;
+      const result = results[item.id];
+      if (!result) continue;
+      const base = item.fileName.replace(/\.png$/i, "");
+      entries.push({ path: `${base}.svg`, content: result.svg });
+      entries.push({ path: `${base}.eps`, content: result.eps });
+      entries.push({ path: `${base}.dxf`, content: result.dxf });
+    }
+    if (entries.length === 0) return;
+    void downloadAsZip(entries, "processed-images.zip");
+  };
+
+  const onDeleteAll = () => {
+    void clearAllData();
+    setResults({});
+    setAppState((current) => ({
+      ...current,
+      queue: [],
+      selectedId: undefined,
+    }));
+  };
+
   return (
     <main
       ref={pageRef}
@@ -247,6 +277,7 @@ export default function HomePage() {
             onSliderPositionChange={(sliderPosition) =>
               setAppState((current) => ({ ...current, sliderPosition }))
             }
+            onFiles={onFiles}
           />
           {hasImages ? (
             <SettingsPanel
@@ -275,6 +306,9 @@ export default function HomePage() {
               onRetry={onRetry}
               onRemove={onRemove}
               onFiles={onFiles}
+              onDownloadAll={onDownloadAll}
+              onDeleteAll={onDeleteAll}
+              downloadAllDisabled={hasActiveProcessing}
             />
             <>
               <ResultDetail result={selectedResult} onExport={onExport} />
