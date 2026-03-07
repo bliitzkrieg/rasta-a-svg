@@ -61,9 +61,9 @@ export default function HomePage() {
     if (files.length === 0) return;
 
     const items = files.map((file) => makeQueueItem(file));
-    await Promise.all(
-      items.map((item, index) => putFileBlob(item.id, files[index])),
-    );
+    for (let i = 0; i < items.length; i++) {
+      await putFileBlob(items[i].id, files[i]);
+    }
 
     setAppState((current) => ({
       ...current,

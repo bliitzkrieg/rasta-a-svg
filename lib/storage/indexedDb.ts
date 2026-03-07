@@ -61,6 +61,28 @@ export async function putFileBlob(id: string, file: Blob): Promise<void> {
   return put(FILES_STORE, id, file);
 }
 
+/**
+ * Writes multiple file blobs in a single transaction. Use when you want to
+ * avoid many concurrent transactions; prefer sequential putFileBlob when
+ * minimizing peak memory (e.g. many large images).
+ */
+export async function putFileBlobs(
+  entries: { id: string; blob: Blob }[],
+): Promise<void> {
+  if (entries.length === 0) return;
+  const db = await openDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(FILES_STORE, "readwrite");
+    tx.onerror = () => reject(tx.error);
+    tx.oncomplete = () => resolve();
+    const store = tx.objectStore(FILES_STORE);
+    for (const { id, blob } of entries) {
+      store.put(blob, id);
+    }
+  });
+  db.close();
+}
+
 export async function getFileBlob(id: string): Promise<Blob | undefined> {
   return get<Blob>(FILES_STORE, id);
 }
