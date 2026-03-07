@@ -110,6 +110,46 @@ function chaikin(points: VectorPoint[], iterations: number, cornerThresholdDeg: 
   return current;
 }
 
+function relaxClosedPath(
+  points: VectorPoint[],
+  strength: number,
+  cornerThresholdDeg: number,
+): VectorPoint[] {
+  if (points.length < 6 || strength <= 0) {
+    return points;
+  }
+
+  const passes = strength >= 0.26 ? 2 : 1;
+  const blend = Math.min(0.35, 0.12 + strength * 0.8);
+  let current = points;
+
+  for (let pass = 0; pass < passes; pass += 1) {
+    const next: VectorPoint[] = [];
+    const n = current.length;
+
+    for (let i = 0; i < n; i += 1) {
+      const prev = current[(i - 1 + n) % n];
+      const curr = current[i];
+      const after = current[(i + 1) % n];
+      const angle = angleAt(prev, curr, after);
+
+      if (angle < Math.max(14, cornerThresholdDeg * 0.75)) {
+        next.push(curr);
+        continue;
+      }
+
+      next.push({
+        x: curr.x * (1 - blend) + ((prev.x + after.x) * 0.5) * blend,
+        y: curr.y * (1 - blend) + ((prev.y + after.y) * 0.5) * blend,
+      });
+    }
+
+    current = next;
+  }
+
+  return current;
+}
+
 export function simplifyPath(
   points: VectorPoint[],
   tolerance: number,
@@ -119,13 +159,31 @@ export function simplifyPath(
   if (points.length < 4) {
     return points;
   }
-  // Match CLI exactly: Douglas-Peucker + smooth points only. No Chaikin subdivision.
-  // Chaikin was fragmenting small features (eyes, wing tips) into dot artifacts.
   const closed = [...points, points[0]];
   const simplified = douglasPeucker(closed, Math.max(0.4, tolerance)).slice(0, -1);
-  return smoothPoints(
+  const clampedSmoothing = Math.min(0.45, Math.max(0, smoothing));
+  const clampedCornerThreshold = Math.max(5, Math.min(170, cornerThresholdDeg));
+  const smoothed = smoothPoints(
     simplified,
-    Math.min(0.45, Math.max(0, smoothing)),
-    Math.max(5, Math.min(170, cornerThresholdDeg))
+    clampedSmoothing,
+    clampedCornerThreshold
+  );
+
+  // Stronger smoothing for traced raster edges: one or two guarded Chaikin
+  // passes round off staircase contours while preserving hard corners.
+  if (smoothed.length < 6 || clampedSmoothing < 0.08) {
+    return smoothed;
+  }
+
+  const iterations = clampedSmoothing >= 0.22 ? 2 : 1;
+  const subdivided = chaikin(
+    smoothed,
+    iterations,
+    Math.max(18, Math.min(140, clampedCornerThreshold * 0.85))
+  );
+  return relaxClosedPath(
+    subdivided,
+    clampedSmoothing,
+    Math.max(16, clampedCornerThreshold * 0.8)
   );
 }

@@ -35,8 +35,38 @@ describe("vector exporters", () => {
   it("builds svg with grouped layer paths", () => {
     const svg = toSVG(baseResult);
     expect(svg).toContain("<svg");
-    expect(svg).toContain("layer-1");
+    expect(svg).toContain('<g id="#ff0000ff">');
     expect(svg).toContain("#ff0000");
+  });
+
+  it("uses cubic segments for staircase contours", () => {
+    const svg = toSVG({
+      ...baseResult,
+      layers: [
+        {
+          name: "COLOR_01",
+          color: "#ff0000",
+          paths: [
+            {
+              points: [
+                { x: 0, y: 0 },
+                { x: 1, y: 0 },
+                { x: 1, y: 1 },
+                { x: 2, y: 1 },
+                { x: 2, y: 2 },
+                { x: 3, y: 2 },
+                { x: 3, y: 3 },
+                { x: 0, y: 3 }
+              ],
+              closed: true,
+              nodeCount: 8
+            }
+          ]
+        }
+      ]
+    });
+
+    expect(svg).toContain("C ");
   });
 
   it("builds eps level 2 commands", () => {

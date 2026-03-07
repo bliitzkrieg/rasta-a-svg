@@ -1,6 +1,6 @@
 import { DEFAULT_SETTINGS, type PersistedAppState } from "@/types/vector";
 
-const STORAGE_KEY = "r2v-lab-state-v33";
+const STORAGE_KEY = "r2v-lab-state-v36";
 
 export function defaultPersistedState(): PersistedAppState {
   return {
@@ -8,6 +8,7 @@ export function defaultPersistedState(): PersistedAppState {
     selectedId: undefined,
     sliderPosition: 50,
     settings: DEFAULT_SETTINGS,
+    theme: "system",
   };
 }
 
@@ -25,6 +26,7 @@ export function loadPersistedState(): PersistedAppState {
         ...DEFAULT_SETTINGS,
         ...parsed.settings,
       },
+      theme: parsed.theme ?? defaultPersistedState().theme,
     };
   } catch {
     return defaultPersistedState();

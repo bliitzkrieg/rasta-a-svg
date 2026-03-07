@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
+import { type DragEvent, useEffect, useMemo, useRef, useState } from "react";
 import { PreviewPane } from "@/components/PreviewPane";
 import { QueueList } from "@/components/QueueList";
+import { ResultDetail } from "@/components/ResultDetail";
 import { SettingsPanel } from "@/components/SettingsPanel";
-import { UploadDropzone } from "@/components/UploadDropzone";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { decodeBlobToImageData } from "@/lib/image/decode";
 import {
   clearAllData,
@@ -73,13 +75,16 @@ export default function HomePage() {
   const [originalUrl, setOriginalUrl] = useState<string>();
   const [vectorUrl, setVectorUrl] = useState<string>();
   const [activePhase, setActivePhase] = useState<string>("Idle");
-  const [paused, setPaused] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
   const [hydrated, setHydrated] = useState(false);
-  const converterVersion = "r2v-linear-v33";
+  const [isDraggingFiles, setIsDraggingFiles] = useState(false);
+  const converterVersion = "r2v-linear-v36";
 
   const workerRef = useRef<Worker | null>(null);
   const processingRef = useRef<string | null>(null);
+  const dragDepthRef = useRef(0);
+  const pageRef = useRef<HTMLElement | null>(null);
+  const topbarRef = useRef<HTMLElement | null>(null);
 
   const selectedItem = useMemo(
     () => state.queue.find((item) => item.id === state.selectedId),
@@ -88,6 +93,7 @@ export default function HomePage() {
   const selectedResult = state.selectedId
     ? results[state.selectedId]
     : undefined;
+  const hasImages = state.queue.length > 0;
 
   useEffect(() => {
     const persisted = loadPersistedState();
@@ -96,6 +102,7 @@ export default function HomePage() {
       ...defaultPersistedState(),
       settings: persisted.settings,
       sliderPosition: persisted.sliderPosition,
+      theme: persisted.theme ?? "system",
     });
     setResults({});
     setIsOffline(!navigator.onLine);
@@ -108,6 +115,54 @@ export default function HomePage() {
     }
     savePersistedState(state);
   }, [state, hydrated]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const preference = state.theme ?? "system";
+    const resolved =
+      preference === "system"
+        ? window.matchMedia("(prefers-color-scheme: dark)").matches
+          ? "dark"
+          : "light"
+        : preference;
+    document.documentElement.setAttribute("data-theme", resolved);
+    if (preference !== "system") return;
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const listener = () => {
+      document.documentElement.setAttribute(
+        "data-theme",
+        mq.matches ? "dark" : "light",
+      );
+    };
+    mq.addEventListener("change", listener);
+    return () => mq.removeEventListener("change", listener);
+  }, [state.theme]);
+
+  useEffect(() => {
+    const page = pageRef.current;
+    const topbar = topbarRef.current;
+    if (!page || !topbar || typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    const syncTopbarHeight = () => {
+      page.style.setProperty("--topbar-height", `${topbar.offsetHeight}px`);
+    };
+
+    syncTopbarHeight();
+
+    const observer = new ResizeObserver(() => {
+      syncTopbarHeight();
+    });
+
+    observer.observe(topbar);
+    window.addEventListener("resize", syncTopbarHeight);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", syncTopbarHeight);
+    };
+  }, []);
 
   useEffect(() => {
     const offline = () => setIsOffline(true);
@@ -234,7 +289,7 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
-    if (paused || processingRef.current) {
+    if (processingRef.current) {
       return;
     }
     const next = state.queue.find((item) => item.status === "queued");
@@ -290,7 +345,7 @@ export default function HomePage() {
         }));
       }
     })();
-  }, [paused, state.queue, state.settings]);
+  }, [state.queue, state.settings]);
 
   const onFiles = async (incoming: FileList | File[]) => {
     const files = Array.from(incoming).filter(
@@ -312,6 +367,50 @@ export default function HomePage() {
     }));
   };
 
+  const dragHasFiles = (event: DragEvent<HTMLElement>) =>
+    Array.from(event.dataTransfer.types).includes("Files");
+
+  const onDragEnter = (event: DragEvent<HTMLElement>) => {
+    if (!dragHasFiles(event)) {
+      return;
+    }
+    event.preventDefault();
+    dragDepthRef.current += 1;
+    setIsDraggingFiles(true);
+  };
+
+  const onDragOver = (event: DragEvent<HTMLElement>) => {
+    if (!dragHasFiles(event)) {
+      return;
+    }
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    setIsDraggingFiles(true);
+  };
+
+  const onDragLeave = (event: DragEvent<HTMLElement>) => {
+    if (!dragHasFiles(event)) {
+      return;
+    }
+    event.preventDefault();
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) {
+      setIsDraggingFiles(false);
+    }
+  };
+
+  const onDrop = (event: DragEvent<HTMLElement>) => {
+    if (!dragHasFiles(event)) {
+      return;
+    }
+    event.preventDefault();
+    dragDepthRef.current = 0;
+    setIsDraggingFiles(false);
+    if (event.dataTransfer.files.length > 0) {
+      void onFiles(event.dataTransfer.files);
+    }
+  };
+
   const onRetry = (id: string) => {
     setState((current) => ({
       ...current,
@@ -320,6 +419,30 @@ export default function HomePage() {
         status: "queued",
         progress: 0,
         error: undefined,
+        updatedAt: new Date().toISOString(),
+      })),
+    }));
+  };
+
+  const onRegenerate = () => {
+    if (!selectedItem || selectedItem.status === "processing") {
+      return;
+    }
+
+    setResults((current) => {
+      const next = { ...current };
+      delete next[selectedItem.id];
+      return next;
+    });
+
+    setState((current) => ({
+      ...current,
+      queue: withUpdated(current.queue, selectedItem.id, (item) => ({
+        ...item,
+        status: "queued",
+        progress: 0,
+        error: undefined,
+        metrics: undefined,
         updatedAt: new Date().toISOString(),
       })),
     }));
@@ -373,39 +496,86 @@ export default function HomePage() {
   };
 
   return (
-    <main className={styles.page}>
-      <header className={styles.header}>
-        <div>
-          <h1>Raster to Vector Lab</h1>
-          <p>
-            Client-side PNG to layered SVG, EPS, and DXF with offline support.
-            Converter: <strong>{converterVersion}</strong>
-          </p>
-        </div>
-        <div className={styles.badges}>
-          <span data-offline={isOffline}>
-            {isOffline ? "Offline" : "Online"}
-          </span>
-          <span>{paused ? "Queue paused" : activePhase}</span>
-          <button
-            type="button"
-            onClick={() => setPaused((current) => !current)}
-          >
-            {paused ? "Resume queue" : "Pause queue"}
-          </button>
-          <button
-            type="button"
-            className="danger"
-            onClick={() => void onClearAll()}
-          >
-            Clear local data
-          </button>
+    <main
+      ref={pageRef}
+      className={styles.page}
+      data-dragging={isDraggingFiles}
+      onDragEnter={onDragEnter}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
+      <header ref={topbarRef} className={styles.topbar}>
+        <a href="/" className={styles.brandLink} aria-label="png2svg.io home">
+          <Image
+            src="/logo.png"
+            alt="png2svg.io"
+            width={220}
+            height={48}
+            className={styles.logo}
+            priority
+          />
+        </a>
+        <div className={styles.topbarControls}>
+          <div className={styles.statusRow}>
+            {isOffline ? (
+              <span className={styles.statusPill} data-offline={isOffline}>
+                Offline
+              </span>
+            ) : null}
+            <span className={styles.statusPill}>{activePhase}</span>
+            {/* <span className={styles.statusPill}>{converterVersion}</span> */}
+          </div>
+          <div className={styles.actionRow}>
+            <ThemeToggle
+              theme={state.theme ?? "system"}
+              onThemeChange={(theme) =>
+                setState((current) => ({ ...current, theme }))
+              }
+            />
+            <button
+              type="button"
+              className="danger"
+              onClick={() => void onClearAll()}
+            >
+              Clear data
+            </button>
+          </div>
         </div>
       </header>
 
-      <section className={styles.grid}>
-        <div className={styles.left}>
-          <UploadDropzone onFiles={onFiles} />
+      <section className={styles.workspace}>
+        <div className={styles.previewColumn}>
+          <PreviewPane
+            result={selectedResult}
+            originalUrl={originalUrl}
+            vectorUrl={vectorUrl}
+            status={selectedItem?.status}
+            progress={selectedItem?.progress}
+            activePhase={selectedItem?.status === "processing" ? activePhase : undefined}
+            sliderPosition={state.sliderPosition}
+            onExport={onExport}
+            onSliderPositionChange={(sliderPosition) =>
+              setState((current) => ({ ...current, sliderPosition }))
+            }
+          />
+          {hasImages ? (
+            <SettingsPanel
+              value={state.settings}
+              onChange={(settings) =>
+                setState((current) => ({ ...current, settings }))
+              }
+              onRegenerate={onRegenerate}
+              regenerateDisabled={
+                !selectedItem ||
+                selectedItem.status === "processing" ||
+                selectedItem.status === "queued"
+              }
+            />
+          ) : null}
+        </div>
+
+        <aside className={styles.sidebar}>
           <QueueList
             items={state.queue}
             selectedId={state.selectedId}
@@ -414,31 +584,21 @@ export default function HomePage() {
             }
             onRetry={onRetry}
             onRemove={onRemove}
+            onFiles={onFiles}
           />
-          <SettingsPanel
-            value={state.settings}
-            onChange={(settings) =>
-              setState((current) => ({ ...current, settings }))
-            }
-          />
-        </div>
-
-        <div className={styles.right}>
-          <PreviewPane
-            result={selectedResult}
-            originalUrl={originalUrl}
-            vectorUrl={vectorUrl}
-            sliderPosition={state.sliderPosition}
-            onSliderPositionChange={(sliderPosition) =>
-              setState((current) => ({ ...current, sliderPosition }))
-            }
-            onExport={onExport}
-          />
-          {selectedItem?.error ? (
-            <p className={styles.error}>Error: {selectedItem.error}</p>
+          {hasImages ? (
+            <>
+              <ResultDetail result={selectedResult} onExport={onExport} />
+              {selectedItem?.error ? (
+                <p className={styles.error}>Error: {selectedItem.error}</p>
+              ) : null}
+            </>
           ) : null}
-        </div>
+        </aside>
       </section>
+      {isDraggingFiles ? (
+        <div className={styles.dropOverlay}>Drop PNG files anywhere</div>
+      ) : null}
     </main>
   );
 }

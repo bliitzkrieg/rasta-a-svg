@@ -287,6 +287,61 @@ function postProcessContour(
   return out.length >= 3 ? out : points;
 }
 
+function isParallelForward(
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+): boolean {
+  return Math.abs(ax * by - ay * bx) < 1e-6 && ax * bx + ay * by > 0;
+}
+
+function softenOrthogonalStairs(points: Point[], maxStep = 1.35): Point[] {
+  if (points.length < 6) {
+    return points;
+  }
+
+  const out: Point[] = [];
+  const n = points.length;
+
+  for (let i = 0; i < n; i += 1) {
+    const prev2 = points[(i - 2 + n) % n];
+    const prev = points[(i - 1 + n) % n];
+    const curr = points[i];
+    const next = points[(i + 1) % n];
+    const next2 = points[(i + 2) % n];
+
+    const abx = prev.x - prev2.x;
+    const aby = prev.y - prev2.y;
+    const bcx = curr.x - prev.x;
+    const bcy = curr.y - prev.y;
+    const cdx = next.x - curr.x;
+    const cdy = next.y - curr.y;
+    const dex = next2.x - next.x;
+    const dey = next2.y - next.y;
+
+    const prevLen = Math.hypot(bcx, bcy);
+    const nextLen = Math.hypot(cdx, cdy);
+    const shortOrthogonalStep =
+      prevLen <= maxStep &&
+      nextLen <= maxStep &&
+      Math.abs(bcx * cdx + bcy * cdy) < 1e-6 &&
+      (Math.abs(bcx) < 1e-6 || Math.abs(bcy) < 1e-6) &&
+      (Math.abs(cdx) < 1e-6 || Math.abs(cdy) < 1e-6);
+    const continuesStaircase =
+      isParallelForward(abx, aby, cdx, cdy) &&
+      isParallelForward(bcx, bcy, dex, dey);
+
+    if (shortOrthogonalStep && continuesStaircase) {
+      continue;
+    }
+
+    out.push(curr);
+  }
+
+  return out.length >= 3 ? out : points;
+}
+
 function hasJoinDamage(raw: Point[], simp: Point[]): boolean {
   if (simp.length < 3) {
     return true;
@@ -412,6 +467,38 @@ function centroid(points: Point[]): Point {
   };
 }
 
+function polygonBounds(points: Point[]): {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+} {
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+
+  for (const point of points) {
+    minX = Math.min(minX, point.x);
+    minY = Math.min(minY, point.y);
+    maxX = Math.max(maxX, point.x);
+    maxY = Math.max(maxY, point.y);
+  }
+
+  return { minX, minY, maxX, maxY };
+}
+
+function isTinyDarkFragment(points: Point[], area: number): boolean {
+  if (area > 9) {
+    return false;
+  }
+
+  const bounds = polygonBounds(points);
+  const width = bounds.maxX - bounds.minX;
+  const height = bounds.maxY - bounds.minY;
+  return width <= 4 && height <= 4;
+}
+
 function expandPolygonRadially(
   points: Point[],
   amount: number,
@@ -459,155 +546,12 @@ function layerArea(layer: VectorLayer): number {
   return total;
 }
 
-function mergeLikeColoredLayers(layers: VectorLayer[]): VectorLayer[] {
-  const merged = new Map<string, VectorLayer>();
-  for (const layer of layers) {
-    const existing = merged.get(layer.color);
-    if (!existing) {
-      merged.set(layer.color, { ...layer, paths: [...layer.paths] });
-      continue;
-    }
-    existing.paths.push(...layer.paths);
-  }
-  return Array.from(merged.values());
-}
-
-function clampLayers(layers: VectorLayer[]): VectorLayer[] {
-  if (layers.length === 0) {
-    return layers;
-  }
-
-  const scored = layers
-    .map((layer) => ({
-      layer,
-      score: layerArea(layer),
-    }))
-    .sort((a, b) => b.score - a.score);
-
-  const cappedLayers = scored.slice(0, 12).map((entry) => entry.layer);
-  const maxPathsPerLayer = 12;
-  const maxDarkPathsPerLayer = 28;
-  const detailReserveCount = 8;
-
-  for (const layer of cappedLayers) {
-    const isDarkLayer = hexLuminance(layer.color) < 55;
-    const layerCap = isDarkLayer ? maxDarkPathsPerLayer : maxPathsPerLayer;
-    if (layer.paths.length <= layerCap) {
-      continue;
-    }
-
-    const scoredPaths = layer.paths
-      .map((path) => ({ path, area: polygonArea(path.points) }))
-      .sort((a, b) => b.area - a.area);
-
-    if (!isDarkLayer) {
-      const localDetailReserve = 3;
-      const primaryCount = Math.max(1, layerCap - localDetailReserve);
-      const primary = scoredPaths.slice(0, primaryCount);
-      const detail = scoredPaths
-        .slice(primaryCount)
-        .filter((entry) => entry.area >= 0.5 && entry.area <= 650)
-        .sort((a, b) => a.area - b.area)
-        .slice(0, localDetailReserve);
-      layer.paths = [...primary, ...detail].map((entry) => entry.path);
-      continue;
-    }
-
-    const primaryCount = Math.max(1, layerCap - detailReserveCount);
-    const primary = scoredPaths.slice(0, primaryCount);
-    const detail = scoredPaths
-      .slice(primaryCount)
-      .filter((entry) => entry.area >= 1 && entry.area <= 420)
-      .sort((a, b) => a.area - b.area)
-      .slice(0, detailReserveCount);
-
-    const selected = [...primary, ...detail];
-    if (selected.length < layerCap) {
-      const set = new Set(selected.map((entry) => entry.path));
-      for (const entry of scoredPaths) {
-        if (set.has(entry.path)) {
-          continue;
-        }
-        selected.push(entry);
-        if (selected.length >= layerCap) {
-          break;
-        }
-      }
-    }
-
-    layer.paths = selected.map((entry) => entry.path);
-  }
-
-  return cappedLayers;
-}
-
 function hexLuminance(hex: string): number {
   const value = hex.replace("#", "");
   const r = Number.parseInt(value.slice(0, 2), 16) || 0;
   const g = Number.parseInt(value.slice(2, 4), 16) || 0;
   const b = Number.parseInt(value.slice(4, 6), 16) || 0;
   return r * 0.299 + g * 0.587 + b * 0.114;
-}
-
-function parseHexColor(hex: string): { r: number; g: number; b: number } {
-  const value = hex.replace("#", "");
-  return {
-    r: Number.parseInt(value.slice(0, 2), 16) || 0,
-    g: Number.parseInt(value.slice(2, 4), 16) || 0,
-    b: Number.parseInt(value.slice(4, 6), 16) || 0,
-  };
-}
-
-function calibrateOutputColor(hex: string): string {
-  const { r, g, b } = parseHexColor(hex);
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  const chroma = max - min;
-  const sat = max === 0 ? 0 : chroma / max;
-  const lum = r * 0.299 + g * 0.587 + b * 0.114;
-
-  let hue = 0;
-  if (chroma > 0) {
-    if (max === r) {
-      hue = ((g - b) / chroma) % 6;
-    } else if (max === g) {
-      hue = (b - r) / chroma + 2;
-    } else {
-      hue = (r - g) / chroma + 4;
-    }
-    hue *= 60;
-    if (hue < 0) {
-      hue += 360;
-    }
-  }
-
-  if (lum < 55) {
-    return "#000000";
-  }
-  if (lum > 232 && sat < 0.18) {
-    return "#fffdff";
-  }
-  if (lum > 210 && sat < 0.35 && Math.abs(r - g) < 35 && Math.abs(g - b) < 35) {
-    return "#fffdff";
-  }
-  if (
-    lum > 180 &&
-    lum <= 232 &&
-    sat >= 0.12 &&
-    sat < 0.45 &&
-    r >= g &&
-    g >= b &&
-    hue <= 35
-  ) {
-    return "#fad9cd";
-  }
-  if (sat > 0.45 && hue >= 20 && hue <= 55) {
-    return "#fab53c";
-  }
-  if (sat > 0.35 && (hue <= 20 || hue >= 340)) {
-    return "#f55255";
-  }
-  return hex;
 }
 
 function isBackgroundFlood(
@@ -679,23 +623,16 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
       speckleThresholdPx,
       smoothing,
       cornerThresholdDeg,
-      calibrate,
-      converterStrategy,
     } = payload.settings;
 
-    const useAdaptiveSimplify =
-      converterStrategy === "adaptive" || converterStrategy === "high-fidelity";
-    const isHighFidelity = converterStrategy === "high-fidelity";
-    const maxPathsPerLayer = isHighFidelity ? 10 : 6;
-    const minLayerCoveragePct = isHighFidelity ? 0.0005 : 0.003;
-    const minLayerCount = isHighFidelity ? 6 : 5;
-    const maxLayerCount = isHighFidelity ? 12 : 8;
+    const minLayerCoveragePct = 0.0005;
+    const minLayerCount = 6;
+    const maxLayerCount = 12;
     const totalPixels = payload.width * payload.height;
     const total = quantized.palette.length;
 
     type LayerCandidate = VectorLayer & {
       coverage: number;
-      pathAreas: number[];
     };
 
     const layerCandidates: LayerCandidate[] = [];
@@ -710,8 +647,7 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
         },
       });
 
-      const rawColor = quantized.palette[index];
-      const color = calibrate ? calibrateOutputColor(rawColor) : rawColor;
+      const color = quantized.palette[index];
       const coverage = quantized.counts[index] / totalPixels;
       const lum = hexLuminance(color);
       const coverageThreshold = lum > 170 || lum < 40 ? 0.0001 : 0.002;
@@ -731,17 +667,14 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
           : simplifyTolerance;
 
       const baseLayerSmoothing = isDarkLayer
-        ? smoothing * 0.1
+        ? Math.max(smoothing * 0.55, smoothing > 0 ? 0.1 : 0)
         : isLightLayer
-          ? smoothing * 0.15
+          ? Math.max(smoothing * 0.35, smoothing > 0 ? 0.08 : 0)
           : smoothing;
 
-      const layerSmoothing =
-        converterStrategy === "high-fidelity"
-          ? Math.min(0.28, baseLayerSmoothing * 1.25)
-          : baseLayerSmoothing;
+      const layerSmoothing = Math.min(0.28, baseLayerSmoothing * 1.25);
 
-      const minPolyArea = isDarkLayer || isLightLayer ? 1 : 8;
+      const minPolyArea = isDarkLayer ? 3 : isLightLayer ? 1 : 8;
 
       const rawMask = labelsToMask(
         quantized.labels,
@@ -782,36 +715,36 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
           const isOutlineLike = isDarkLayer && rawArea < 5000;
 
           let adaptiveTol = layerTolerance;
-          if (useAdaptiveSimplify) {
-            if (rawArea < 80) {
-              adaptiveTol = Math.min(layerTolerance, 0.1);
-            } else if (rawArea < 250) {
-              adaptiveTol = Math.min(layerTolerance, 0.18);
-            } else if (rawArea < 800) {
-              adaptiveTol = Math.min(layerTolerance, 0.3);
-            } else if (rawArea < 2500) {
-              adaptiveTol = Math.min(layerTolerance, 0.55);
-            }
+          if (rawArea < 80) {
+            adaptiveTol = Math.min(layerTolerance, 0.1);
+          } else if (rawArea < 250) {
+            adaptiveTol = Math.min(layerTolerance, 0.18);
+          } else if (rawArea < 800) {
+            adaptiveTol = Math.min(layerTolerance, 0.3);
+          } else if (rawArea < 2500) {
+            adaptiveTol = Math.min(layerTolerance, 0.55);
           }
 
           if (isOutlineLike) {
-            adaptiveTol = Math.min(adaptiveTol, 0.18);
+            const outlineTolerance =
+              rawArea < 120 ? 0.22 : rawArea < 500 ? 0.35 : rawArea < 1500 ? 0.5 : 0.65;
+            adaptiveTol = Math.max(adaptiveTol, outlineTolerance);
           }
 
           let smoothForPoly = layerSmoothing;
           if (isDarkLayer) {
             if (rawArea < 4000) {
-              smoothForPoly = Math.min(smoothForPoly, 0.02);
+              smoothForPoly = Math.min(smoothForPoly, 0.16);
             }
             if (rawArea < 1500) {
-              smoothForPoly = 0;
+              smoothForPoly = Math.min(smoothForPoly, 0.14);
             }
           }
-          if (isHighFidelity && rawArea < 250) {
-            smoothForPoly = 0;
+          if (rawArea < 250) {
+            smoothForPoly = Math.min(smoothForPoly, 0.12);
           }
           if (isOutlineLike) {
-            smoothForPoly = 0;
+            smoothForPoly = Math.max(smoothForPoly, rawArea < 500 ? 0.22 : 0.3);
           }
 
           let pts = simplifyPath(
@@ -822,19 +755,20 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
           );
 
           pts = normalizePoints(pts, payload.width, payload.height);
+          pts = softenOrthogonalStairs(pts);
           pts = postProcessContour(pts, rawClockwise);
 
           const fallback = postProcessContour(rawRounded, rawClockwise);
-          if (isHighFidelity && hasJoinDamage(rawRounded, pts)) {
+          if (hasJoinDamage(rawRounded, pts)) {
             pts = fallback;
           }
 
           // Important new step:
           // Slightly expand dark outline-like polygons so adjacent fills/outline joins
           // overlap instead of leaving tiny visible seams.
-          if (isOutlineLike) {
+          if (isOutlineLike && rawArea >= 80) {
             const haloAmount =
-              rawArea < 500 ? 0.55 : rawArea < 1500 ? 0.42 : 0.3;
+              rawArea < 500 ? 0.18 : rawArea < 1500 ? 0.14 : 0.1;
 
             pts = expandPolygonRadially(
               pts,
@@ -846,6 +780,9 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
           }
 
           const area = polygonArea(pts);
+          if (isDarkLayer && isTinyDarkFragment(pts, area)) {
+            return { pts: [], area: 0 };
+          }
           return { pts, area };
         })
         .filter(({ pts, area }) => pts.length >= 3 && area >= minPolyArea)
@@ -864,7 +801,6 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
           closed: true,
           nodeCount: pts.length,
         })),
-        pathAreas: pathsWithArea.map(({ area }) => area),
       });
     }
 
@@ -881,60 +817,12 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
       selected.push(...extras);
     }
 
-    let layers = selected
+    const layers: VectorLayer[] = selected
       .sort((a, b) => b.coverage - a.coverage)
       .slice(0, maxLayerCount)
       .map((l) => ({ ...l, paths: [...l.paths] }));
 
-    if (calibrate) {
-      layers = layers.map((l) => ({
-        ...l,
-        color: calibrateOutputColor(l.color),
-      }));
-      layers = mergeLikeColoredLayers(layers) as LayerCandidate[];
-    }
-
-    if (!isHighFidelity) {
-      for (const layer of layers) {
-        const isDarkLayer = hexLuminance(layer.color) < 55;
-        const cap = isDarkLayer
-          ? Math.max(maxPathsPerLayer, 8)
-          : maxPathsPerLayer;
-
-        if (layer.paths.length <= cap) {
-          continue;
-        }
-
-        const areas =
-          (layer as LayerCandidate).pathAreas ??
-          layer.paths.map((p) => polygonArea(p.points));
-
-        const scored = layer.paths
-          .map((p, i) => ({ p, area: areas[i] ?? 0 }))
-          .sort((a, b) => b.area - a.area);
-
-        if (!isDarkLayer) {
-          layer.paths = scored.slice(0, cap).map(({ p }) => p);
-          continue;
-        }
-
-        const detailReserve = 2;
-        const primary = scored.slice(0, Math.max(1, cap - detailReserve));
-        const detail = scored
-          .slice(Math.max(1, cap - detailReserve))
-          .filter(({ area }) => area >= 8 && area <= 320)
-          .sort((a, b) => a.area - b.area)
-          .slice(0, detailReserve);
-
-        layer.paths = [...primary, ...detail].map(({ p }) => p);
-      }
-    }
-
-    const preparedLayers = isHighFidelity
-      ? (layers as VectorLayer[])
-      : clampLayers(layers as VectorLayer[]);
-
-    const outputLayers = preparedLayers.sort(
+    const outputLayers = layers.sort(
       (a, b) => layerArea(b) - layerArea(a),
     );
 

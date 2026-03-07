@@ -11,6 +11,8 @@
     "convert:cli": "node scripts/convert-cli.js --input example/input --output example/generated"
   },
   "dependencies": {
+    "@radix-ui/react-tooltip": "^1.2.8",
+    "lucide-react": "^0.577.0",
     "next": "16.0.1",
     "react": "19.2.0",
     "react-dom": "19.2.0"

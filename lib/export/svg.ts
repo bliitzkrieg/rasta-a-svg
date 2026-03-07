@@ -86,8 +86,10 @@ function clampHandle(
 }
 
 function toBezierPath(points: VectorPoint[]): string {
-  // For tiny rings, prefer straight segments to avoid micro-loop/slice artifacts.
-  if (points.length < 8) {
+  // Keep small but valid contours eligible for cubic smoothing. The traced
+  // raster boundaries often contain short step segments that look jagged if we
+  // immediately fall back to polylines.
+  if (points.length < 5) {
     return toPolylinePath(points);
   }
   const n = points.length;
@@ -123,7 +125,10 @@ function toBezierPath(points: VectorPoint[]): string {
     const sharpJoin = a1 < 58 || a2 < 58;
     const tinySegment = seg < 1.25;
 
-    if (sharpJoin || tinySegment) {
+    // Tiny segments are common on traced raster edges. Only force a straight
+    // join when they are also genuinely sharp; otherwise let the cubic fit
+    // smooth the staircase without introducing obvious corner drift.
+    if (sharpJoin || (tinySegment && (a1 < 38 || a2 < 38))) {
       d += `L ${p2.x.toFixed(2)} ${p2.y.toFixed(2)} `;
     } else {
       d += `C ${c1.x.toFixed(2)} ${c1.y.toFixed(2)} ${c2.x.toFixed(2)} ${c2.y.toFixed(2)} ${p2.x.toFixed(2)} ${p2.y.toFixed(2)} `;

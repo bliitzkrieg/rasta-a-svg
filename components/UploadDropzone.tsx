@@ -20,9 +20,16 @@ export function UploadDropzone({ onFiles }: UploadDropzoneProps) {
       }}
       className="dropzone"
     >
-      <p>Drop PNG files here or use file picker</p>
-      <button type="button" onClick={() => inputRef.current?.click()}>
-        Select PNG files
+      <h2>Upload PNG</h2>
+      <p className="dropzone-label">
+        Drop one or more PNG files here, then compare the vector output on the left.
+      </p>
+      <button
+        type="button"
+        className="dropzone-cta"
+        onClick={() => inputRef.current?.click()}
+      >
+        Choose PNG files
       </button>
       <input
         ref={inputRef}

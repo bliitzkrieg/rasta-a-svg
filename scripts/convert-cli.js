@@ -17,8 +17,7 @@ function parseArgs(argv) {
     maxPathsPerLayer: 5,
     minLayerCount: 5,
     maxLayerCount: 8,
-    targetPathsPerLayer: 4.0,
-    calibrate: false
+    targetPathsPerLayer: 4.0
   };
   for (let i = 2; i < argv.length; i += 1) {
     const key = argv[i];
@@ -27,10 +26,6 @@ function parseArgs(argv) {
       continue;
     }
     const name = key.slice(2);
-    if (name === "calibrate") {
-      out.calibrate = true;
-      continue;
-    }
     if (name in out && value && !value.startsWith("--")) {
       out[name] = Number.isNaN(Number(value)) ? value : Number(value);
       i += 1;
@@ -212,60 +207,6 @@ function hexLuminance(hex) {
   const g = Number.parseInt(v.slice(2, 4), 16) || 0;
   const b = Number.parseInt(v.slice(4, 6), 16) || 0;
   return r * 0.299 + g * 0.587 + b * 0.114;
-}
-
-function parseHexColor(hex) {
-  const v = hex.replace("#", "");
-  return {
-    r: Number.parseInt(v.slice(0, 2), 16) || 0,
-    g: Number.parseInt(v.slice(2, 4), 16) || 0,
-    b: Number.parseInt(v.slice(4, 6), 16) || 0
-  };
-}
-
-function calibrateOutputColor(hex) {
-  const { r, g, b } = parseHexColor(hex);
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  const chroma = max - min;
-  const sat = max === 0 ? 0 : chroma / max;
-  const lum = r * 0.299 + g * 0.587 + b * 0.114;
-
-  let hue = 0;
-  if (chroma > 0) {
-    if (max === r) {
-      hue = ((g - b) / chroma) % 6;
-    } else if (max === g) {
-      hue = (b - r) / chroma + 2;
-    } else {
-      hue = (r - g) / chroma + 4;
-    }
-    hue *= 60;
-    if (hue < 0) {
-      hue += 360;
-    }
-  }
-
-  if (lum < 55) return "#000000";
-  if (lum > 232 && sat < 0.18) return "#fffdff";
-  if (lum > 210 && sat < 0.35 && Math.abs(r - g) < 35 && Math.abs(g - b) < 35) return "#fffdff";
-  if (lum > 180 && lum <= 232 && sat >= 0.12 && sat < 0.45 && r >= g && g >= b && hue <= 35) return "#fad9cd";
-  if (sat > 0.45 && hue >= 20 && hue <= 55) return "#fab53c";
-  if (sat > 0.35 && (hue <= 20 || hue >= 340)) return "#f55255";
-  return hex;
-}
-
-function mergeLikeColoredLayers(layers) {
-  const byColor = new Map();
-  for (const layer of layers) {
-    const existing = byColor.get(layer.color);
-    if (!existing) {
-      byColor.set(layer.color, { ...layer, paths: [...layer.paths] });
-      continue;
-    }
-    existing.paths.push(...layer.paths);
-  }
-  return Array.from(byColor.values());
 }
 
 function quantizeImage(pixels, width, height, size) {
@@ -746,8 +687,7 @@ function convertImage(image, options) {
   const totalPixels = image.width * image.height;
   for (let i = 0; i < quantized.palette.length; i += 1) {
     const coverage = quantized.counts[i] / totalPixels;
-    const rawColor = quantized.palette[i];
-    const color = options.calibrate ? calibrateOutputColor(rawColor) : rawColor;
+    const color = quantized.palette[i];
     const lum = hexLuminance(color);
     const coverageThreshold = lum > 170 || lum < 40 ? 0.0001 : 0.002;
     if (coverage < coverageThreshold) {
@@ -804,17 +744,10 @@ function convertImage(image, options) {
       .slice(0, options.minLayerCount - selected.length);
     selected.push(...extras);
   }
-  let layers = selected
+  const layers = selected
     .sort((a, b) => b.coverage - a.coverage)
     .slice(0, options.maxLayerCount)
     .map((l) => ({ ...l, paths: [...l.paths] }));
-  if (options.calibrate) {
-    layers = layers.map((layer) => ({
-      ...layer,
-      color: calibrateOutputColor(layer.color)
-    }));
-    layers = mergeLikeColoredLayers(layers);
-  }
 
   for (const layer of layers) {
     const isDarkLayer = hexLuminance(layer.color) < 55;
@@ -848,14 +781,6 @@ function convertImage(image, options) {
       }
     }
     layer.paths = selectedPaths;
-  }
-
-  if (options.calibrate) {
-    layers = layers.map((layer) => ({
-      ...layer,
-      color: calibrateOutputColor(layer.color)
-    }));
-    layers = mergeLikeColoredLayers(layers);
   }
 
   const cleanLayers = layers.map((l) => ({

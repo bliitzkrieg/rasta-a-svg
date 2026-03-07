@@ -7,8 +7,6 @@ export type QueueStatus =
 
 export type OptimizePreset = "fidelity" | "balanced" | "minimal-nodes";
 
-export type ConverterStrategy = "standard" | "adaptive" | "high-fidelity";
-
 export type PaletteMode = "auto" | "fixed";
 
 export interface ConversionSettings {
@@ -19,8 +17,6 @@ export interface ConversionSettings {
   simplifyTolerancePx: number;
   cornerThresholdDeg: number;
   optimizePreset: OptimizePreset;
-  calibrate: boolean;
-  converterStrategy: ConverterStrategy;
 }
 
 export interface VectorPoint {
@@ -69,11 +65,14 @@ export interface ImageQueueItem {
   updatedAt: string;
 }
 
+export type ThemePreference = "light" | "dark" | "system";
+
 export interface PersistedAppState {
   queue: ImageQueueItem[];
   selectedId?: string;
   sliderPosition: number;
   settings: ConversionSettings;
+  theme: ThemePreference;
 }
 
 export interface ConvertJobRequest {
@@ -103,11 +102,9 @@ export interface ConvertJobError {
 export const DEFAULT_SETTINGS: ConversionSettings = {
   paletteMode: "fixed",
   paletteSize: 16,
-  smoothing: 0.16,
+  smoothing: 0.28,
   speckleThresholdPx: 4,
-  simplifyTolerancePx: 1.8,
+  simplifyTolerancePx: 2.2,
   cornerThresholdDeg: 40,
   optimizePreset: "fidelity",
-  calibrate: false,
-  converterStrategy: "high-fidelity"
 };

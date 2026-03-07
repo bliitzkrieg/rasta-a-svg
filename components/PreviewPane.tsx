@@ -1,13 +1,15 @@
 "use client";
 
-import type { ConversionResult } from "@/types/vector";
+import type { ConversionResult, QueueStatus } from "@/types/vector";
 import { CompareSlider } from "./CompareSlider";
-import { ExportButtons } from "./ExportButtons";
 
 interface PreviewPaneProps {
   result?: ConversionResult;
   originalUrl?: string;
   vectorUrl?: string;
+  status?: QueueStatus;
+  progress?: number;
+  activePhase?: string;
   sliderPosition: number;
   onSliderPositionChange: (value: number) => void;
   onExport: (type: "svg" | "eps" | "dxf") => void;
@@ -17,41 +19,26 @@ export function PreviewPane({
   result,
   originalUrl,
   vectorUrl,
+  status,
+  progress,
+  activePhase,
   sliderPosition,
   onSliderPositionChange,
-  onExport
+  onExport,
 }: PreviewPaneProps) {
   return (
-    <div className="panel preview">
-      <h2>Preview & Compare</h2>
+    <div className="panel preview-stage">
       <CompareSlider
         originalUrl={originalUrl}
         vectorUrl={vectorUrl}
+        status={status}
+        progress={progress}
+        activePhase={activePhase}
         sliderPosition={sliderPosition}
         onSliderPositionChange={onSliderPositionChange}
         aspectRatio={result ? result.width / result.height : undefined}
+        onExport={onExport}
       />
-      {result ? (
-        <>
-          <div className="stats">
-            <span>{result.metrics.nodeCount} nodes</span>
-            <span>{result.metrics.pathCount} paths</span>
-            <span>{result.metrics.elapsedMs} ms</span>
-          </div>
-          <div className="layers">
-            {result.layers.map((layer) => (
-              <div key={layer.name} className="layer-row">
-                <span className="swatch" style={{ backgroundColor: layer.color }} />
-                <span>{layer.name}</span>
-                <span>{layer.paths.length} paths</span>
-              </div>
-            ))}
-          </div>
-        </>
-      ) : (
-        <p className="muted">No vector result yet.</p>
-      )}
-      <ExportButtons disabled={!result} onExport={onExport} />
     </div>
   );
 }
