@@ -320,18 +320,40 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
       const pathsWithArea = polygons
         .map((poly) => {
           const rawArea = polygonArea(poly);
-          // Adaptive simplification: smaller shapes use lower epsilon to preserve detail
+          const rawRounded = poly.map((p) => ({
+            x: Number(Math.max(0, Math.min(payload.width, p.x)).toFixed(2)),
+            y: Number(Math.max(0, Math.min(payload.height, p.y)).toFixed(2))
+          }));
+
+          // Adaptive simplification: smaller shapes use lower epsilon to preserve detail.
           let adaptiveTol = layerTolerance;
           if (useAdaptiveSimplify) {
-            if (rawArea < 100) adaptiveTol = Math.min(layerTolerance, 0.3);
-            else if (rawArea < 500) adaptiveTol = Math.min(layerTolerance, 0.6);
-            else if (rawArea < 2000) adaptiveTol = Math.min(layerTolerance, 1.0);
+            if (rawArea < 100) adaptiveTol = Math.min(layerTolerance, 0.22);
+            else if (rawArea < 500) adaptiveTol = Math.min(layerTolerance, 0.45);
+            else if (rawArea < 2000) adaptiveTol = Math.min(layerTolerance, 0.85);
           }
-          const pts = simplifyPath(poly, adaptiveTol, layerSmoothing, cornerThresholdDeg)
+
+          const smoothForPoly = (isHighFidelity && isDarkLayer && rawArea < 3000)
+            ? Math.min(layerSmoothing, 0.06)
+            : layerSmoothing;
+
+          let pts = simplifyPath(poly, adaptiveTol, smoothForPoly, cornerThresholdDeg)
             .map((p) => ({
               x: Number(Math.max(0, Math.min(payload.width, p.x)).toFixed(2)),
               y: Number(Math.max(0, Math.min(payload.height, p.y)).toFixed(2))
             }));
+
+          // Topology guard (high-fidelity): if simplification materially changes local shape,
+          // fall back to raw traced contour for this polygon to avoid tiny missing slices at joins.
+          if (isHighFidelity) {
+            const rawRoundedArea = polygonArea(rawRounded);
+            const simpArea = polygonArea(pts);
+            const areaDelta = rawRoundedArea > 0 ? Math.abs(simpArea - rawRoundedArea) / rawRoundedArea : 0;
+            if (pts.length < 3 || areaDelta > 0.08) {
+              pts = rawRounded;
+            }
+          }
+
           return { pts, area: polygonArea(pts) };
         })
         .filter(({ pts, area }) => pts.length >= 3 && area >= minPolyArea)
