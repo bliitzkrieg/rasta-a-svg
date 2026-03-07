@@ -544,7 +544,7 @@ export default function HomePage() {
         </div>
       </header>
 
-      <section className={styles.workspace}>
+      <section className={styles.workspace} data-empty={!hasImages}>
         <div className={styles.previewColumn}>
           <PreviewPane
             result={selectedResult}
@@ -575,30 +575,44 @@ export default function HomePage() {
           ) : null}
         </div>
 
-        <aside className={styles.sidebar}>
-          <QueueList
-            items={state.queue}
-            selectedId={state.selectedId}
-            onSelect={(id) =>
-              setState((current) => ({ ...current, selectedId: id }))
-            }
-            onRetry={onRetry}
-            onRemove={onRemove}
-            onFiles={onFiles}
-          />
-          {hasImages ? (
+        {hasImages ? (
+          <aside className={styles.sidebar}>
+            <QueueList
+              items={state.queue}
+              selectedId={state.selectedId}
+              onSelect={(id) =>
+                setState((current) => ({ ...current, selectedId: id }))
+              }
+              onRetry={onRetry}
+              onRemove={onRemove}
+              onFiles={onFiles}
+            />
             <>
               <ResultDetail result={selectedResult} onExport={onExport} />
               {selectedItem?.error ? (
                 <p className={styles.error}>Error: {selectedItem.error}</p>
               ) : null}
             </>
-          ) : null}
-        </aside>
+          </aside>
+        ) : null}
       </section>
       {isDraggingFiles ? (
         <div className={styles.dropOverlay}>Drop PNG files anywhere</div>
       ) : null}
+      <footer className={styles.footer}>
+        <span>
+          made with <span className={styles.footerHeart}>{"<3"}</span> by{" "}
+          <a
+            href="https://github.com/bliitzkrieg"
+            target="_blank"
+            rel="noreferrer"
+            className={styles.footerLink}
+          >
+            Bliitzkrieg
+          </a>{" "}
+          (and Codex!)
+        </span>
+      </footer>
     </main>
   );
 }

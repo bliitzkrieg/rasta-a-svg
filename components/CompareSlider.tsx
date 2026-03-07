@@ -31,10 +31,20 @@ export function CompareSlider({
       <div className="compare-wrap compare-empty">
         <div className="compare-canvas compare-canvas-empty">
           <div className="empty-state">
-            <span className="empty-eyebrow">png2svg.io</span>
-            <h2>Turn PNGs into clean, layered vectors in seconds.</h2>
-            <div className="muted">
-              Drop your files anywhere to get started!
+            <div className="empty-stateAmbient" aria-hidden="true">
+              <span className="empty-stateGlow empty-stateGlowPrimary" />
+              <span className="empty-stateGlow empty-stateGlowSecondary" />
+              <span className="empty-stateGrid" />
+              <span className="empty-stateBeam" />
+              <span className="empty-stateOrbit empty-stateOrbitA" />
+              <span className="empty-stateOrbit empty-stateOrbitB" />
+            </div>
+            <div className="empty-stateContent">
+              <span className="empty-eyebrow">Raster in. Vector out.</span>
+              <h2>Turn PNGs into clean, layered vectors in seconds.</h2>
+              <div className="muted">
+                Drop your files anywhere to get started.
+              </div>
             </div>
           </div>
         </div>

@@ -489,6 +489,7 @@ button.danger:hover {
 }
 
 .empty-state {
+  position: relative;
   display: flex;
   width: 100%;
   height: 100%;
@@ -500,6 +501,107 @@ button.danger:hover {
   gap: 0.7rem;
   text-align: center;
   padding: 2.5rem;
+}
+
+.empty-stateAmbient {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.empty-stateContent {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.empty-stateGlow,
+.empty-stateOrbit,
+.empty-stateBeam,
+.empty-stateGrid {
+  position: absolute;
+}
+
+.empty-stateGlow {
+  border-radius: 999px;
+  filter: blur(20px);
+  opacity: 0.8;
+  animation: emptyStateFloat 10s ease-in-out infinite;
+}
+
+.empty-stateGlowPrimary {
+  top: 12%;
+  left: 12%;
+  width: 14rem;
+  height: 14rem;
+  background: color-mix(in srgb, var(--brand-primary) 26%, transparent);
+}
+
+.empty-stateGlowSecondary {
+  right: 10%;
+  bottom: 10%;
+  width: 16rem;
+  height: 16rem;
+  background: color-mix(in srgb, var(--brand-secondary) 24%, transparent);
+  animation-delay: -5s;
+}
+
+.empty-stateGrid {
+  inset: 10%;
+  border-radius: 28px;
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  background-image:
+    linear-gradient(
+      color-mix(in srgb, var(--brand-primary) 8%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--brand-primary) 8%, transparent) 1px,
+      transparent 1px
+    );
+  background-size: 28px 28px;
+  mask-image: radial-gradient(circle at center, #000 42%, transparent 92%);
+  opacity: 0.4;
+}
+
+.empty-stateBeam {
+  inset: -10% 30%;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    color-mix(in srgb, #ffffff 40%, transparent) 48%,
+    transparent 100%
+  );
+  opacity: 0.35;
+  transform: translateY(-100%);
+  animation: emptyStateBeam 4.5s ease-in-out infinite;
+}
+
+.empty-stateOrbit {
+  top: 50%;
+  left: 50%;
+  border: 1px solid color-mix(in srgb, var(--brand-primary) 18%, var(--line));
+  border-radius: 999px;
+}
+
+.empty-stateOrbitA {
+  width: min(46vw, 18rem);
+  height: min(46vw, 18rem);
+  margin: calc(min(46vw, 18rem) / -2) 0 0 calc(min(46vw, 18rem) / -2);
+  animation: emptyStateSpin 14s linear infinite;
+}
+
+.empty-stateOrbitB {
+  width: min(62vw, 24rem);
+  height: min(62vw, 24rem);
+  margin: calc(min(62vw, 24rem) / -2) 0 0 calc(min(62vw, 24rem) / -2);
+  border-color: color-mix(in srgb, var(--brand-secondary) 18%, var(--line));
+  animation: emptyStateSpinReverse 18s linear infinite;
 }
 
 .empty-eyebrow {
@@ -522,6 +624,44 @@ button.danger:hover {
   font-size: clamp(1.6rem, 3vw, 2.35rem);
   line-height: 1.05;
   letter-spacing: -0.04em;
+}
+
+@keyframes emptyStateFloat {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(0, -14px, 0) scale(1.04);
+  }
+}
+
+@keyframes emptyStateBeam {
+  0% {
+    transform: translateY(-100%);
+  }
+  55%,
+  100% {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes emptyStateSpin {
+  from {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+  to {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+@keyframes emptyStateSpinReverse {
+  from {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+  to {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
 }
 
 .compare-canvas-pending {
@@ -1155,5 +1295,21 @@ button.danger:hover {
   .result-header {
     align-items: flex-start;
     flex-direction: column;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .empty-stateGlow,
+  .empty-stateBeam,
+  .empty-stateOrbitA,
+  .empty-stateOrbitB,
+  .compare-pendingGlow,
+  .compare-pendingScanline,
+  .compare-pendingOrbitA,
+  .compare-pendingOrbitB,
+  .compare-pendingOrbitDotA,
+  .compare-pendingOrbitDotB,
+  .compare-pendingTrack span {
+    animation: none;
   }
 }
