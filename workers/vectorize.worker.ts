@@ -264,10 +264,11 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
     );
     const { speckleThresholdPx, smoothing, cornerThresholdDeg, calibrate, converterStrategy } = payload.settings;
     const useAdaptiveSimplify = converterStrategy === "adaptive" || converterStrategy === "high-fidelity";
-    const maxPathsPerLayer = converterStrategy === "high-fidelity" ? 8 : 6;
-    const minLayerCoveragePct = 0.003;
-    const minLayerCount = 5;
-    const maxLayerCount = 8;
+    const isHighFidelity = converterStrategy === "high-fidelity";
+    const maxPathsPerLayer = isHighFidelity ? 10 : 6;
+    const minLayerCoveragePct = isHighFidelity ? 0.0005 : 0.003;
+    const minLayerCount = isHighFidelity ? 6 : 5;
+    const maxLayerCount = isHighFidelity ? 12 : 8;
     const totalPixels = payload.width * payload.height;
     const total = quantized.palette.length;
 
@@ -368,25 +369,29 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
       layers = mergeLikeColoredLayers(layers) as LayerCandidate[];
     }
 
-    // Per-layer path capping: mirror CLI logic
-    for (const layer of layers) {
-      const isDarkLayer = hexLuminance(layer.color) < 55;
-      const cap = isDarkLayer ? Math.max(maxPathsPerLayer, 8) : maxPathsPerLayer;
-      if (layer.paths.length <= cap) continue;
-      const areas = (layer as LayerCandidate).pathAreas ?? layer.paths.map((p) => polygonArea(p.points));
-      const scored = layer.paths.map((p, i) => ({ p, area: areas[i] ?? 0 })).sort((a, b) => b.area - a.area);
-      if (!isDarkLayer) {
-        layer.paths = scored.slice(0, cap).map(({ p }) => p);
-        continue;
+    // Per-layer path capping: keep CLI behavior for non-high-fidelity.
+    // In high-fidelity mode, skip capping entirely to avoid dropping tiny cutouts/holes
+    // (this is the likely source of GooseCupid black fill artifacts).
+    if (!isHighFidelity) {
+      for (const layer of layers) {
+        const isDarkLayer = hexLuminance(layer.color) < 55;
+        const cap = isDarkLayer ? Math.max(maxPathsPerLayer, 8) : maxPathsPerLayer;
+        if (layer.paths.length <= cap) continue;
+        const areas = (layer as LayerCandidate).pathAreas ?? layer.paths.map((p) => polygonArea(p.points));
+        const scored = layer.paths.map((p, i) => ({ p, area: areas[i] ?? 0 })).sort((a, b) => b.area - a.area);
+        if (!isDarkLayer) {
+          layer.paths = scored.slice(0, cap).map(({ p }) => p);
+          continue;
+        }
+        const detailReserve = 2;
+        const primary = scored.slice(0, Math.max(1, cap - detailReserve));
+        const detail = scored
+          .slice(Math.max(1, cap - detailReserve))
+          .filter(({ area }) => area >= 8 && area <= 320)
+          .sort((a, b) => a.area - b.area)
+          .slice(0, detailReserve);
+        layer.paths = [...primary, ...detail].map(({ p }) => p);
       }
-      const detailReserve = 2;
-      const primary = scored.slice(0, Math.max(1, cap - detailReserve));
-      const detail = scored
-        .slice(Math.max(1, cap - detailReserve))
-        .filter(({ area }) => area >= 8 && area <= 320)
-        .sort((a, b) => a.area - b.area)
-        .slice(0, detailReserve);
-      layer.paths = [...primary, ...detail].map(({ p }) => p);
     }
 
     // Paint broad regions first so detail layers stay visible
