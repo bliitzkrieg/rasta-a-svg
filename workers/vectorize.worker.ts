@@ -264,7 +264,7 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
     );
     const { speckleThresholdPx, smoothing, cornerThresholdDeg, calibrate, converterStrategy } = payload.settings;
     const useAdaptiveSimplify = converterStrategy === "adaptive" || converterStrategy === "high-fidelity";
-    const maxPathsPerLayer = 6;
+    const maxPathsPerLayer = converterStrategy === "high-fidelity" ? 8 : 6;
     const minLayerCoveragePct = 0.003;
     const minLayerCount = 5;
     const maxLayerCount = 8;
@@ -299,11 +299,14 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
         : isLightLayer
           ? Math.max(0.35, simplifyTolerance * 0.45)
           : simplifyTolerance;
-      const layerSmoothing = isDarkLayer
+      const baseLayerSmoothing = isDarkLayer
         ? smoothing * 0.1
         : isLightLayer
           ? smoothing * 0.15
           : smoothing;
+      const layerSmoothing = converterStrategy === "high-fidelity"
+        ? Math.min(0.28, baseLayerSmoothing * 1.25)
+        : baseLayerSmoothing;
       // CLI: minPolyArea = 1 for dark/light, 8 for midtone — key to removing dot artifacts
       const minPolyArea = isDarkLayer || isLightLayer ? 1 : 8;
 
