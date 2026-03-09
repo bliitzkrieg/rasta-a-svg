@@ -2,7 +2,18 @@ import eslint from "@eslint/js";
 import tseslint from "typescript-eslint";
 
 export default [
-  { ignores: [".next/", "node_modules/", "scripts/", "public/sw.js", "*.config.js", "*.config.mjs", "*.config.ts"] },
+  {
+    ignores: [
+      ".next/",
+      "node_modules/",
+      "public/vendor/",
+      "scripts/",
+      "public/sw.js",
+      "*.config.js",
+      "*.config.mjs",
+      "*.config.ts",
+    ],
+  },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {

@@ -3,6 +3,10 @@ node_modules
 coverage
 dist
 *.log
+tsconfig.tsbuildinfo
+example/generated/
+example/generated-*/
+rust/**/target/
 
 # clerk configuration (can include secrets)
 /.clerk/

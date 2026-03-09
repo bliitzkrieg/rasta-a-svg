@@ -6,7 +6,12 @@ export function computeMetrics(layers: VectorLayer[], startedAt: number): Conver
   for (const layer of layers) {
     pathCount += layer.paths.length;
     for (const path of layer.paths) {
-      nodeCount += path.nodeCount;
+      if (path.nodeCount > 0) {
+        nodeCount += path.nodeCount;
+        continue;
+      }
+      nodeCount += path.points.length;
+      nodeCount += path.holes?.reduce((sum, hole) => sum + hole.length, 0) ?? 0;
     }
   }
   return {

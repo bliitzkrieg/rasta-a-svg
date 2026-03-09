@@ -73,7 +73,40 @@ describe("vector exporters", () => {
     const eps = toEPSLevel2(baseResult);
     expect(eps).toContain("EPSF-3.0");
     expect(eps).toContain("% Layer: COLOR_01");
-    expect(eps).toContain("closepath fill");
+    expect(eps).toContain("closepath");
+    expect(eps).toContain("fill");
+  });
+
+  it("uses eofill for paths with holes", () => {
+    const eps = toEPSLevel2({
+      ...baseResult,
+      layers: [
+        {
+          name: "COLOR_01",
+          color: "#ff0000",
+          paths: [
+            {
+              points: [
+                { x: 10, y: 10 },
+                { x: 90, y: 10 },
+                { x: 90, y: 90 },
+                { x: 10, y: 90 }
+              ],
+              holes: [[
+                { x: 30, y: 30 },
+                { x: 70, y: 30 },
+                { x: 70, y: 70 },
+                { x: 30, y: 70 }
+              ]],
+              closed: true,
+              nodeCount: 8
+            }
+          ]
+        }
+      ]
+    });
+
+    expect(eps).toContain("eofill");
   });
 
   it("builds dxf with layers and lwpolyline", () => {

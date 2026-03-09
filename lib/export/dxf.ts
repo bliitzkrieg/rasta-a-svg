@@ -42,13 +42,19 @@ export function toDXF(result: Omit<ConversionResult, "svg" | "eps" | "dxf">): st
       if (!path.points.length) {
         continue;
       }
-      add(lines, 0, "LWPOLYLINE");
-      add(lines, 8, layer.name);
-      add(lines, 90, path.points.length);
-      add(lines, 70, path.closed ? 1 : 0);
-      for (const point of path.points) {
-        add(lines, 10, point.x.toFixed(4));
-        add(lines, 20, (result.height - point.y).toFixed(4));
+      const contours = [path.points, ...(path.holes ?? [])];
+      for (const contour of contours) {
+        if (!contour.length) {
+          continue;
+        }
+        add(lines, 0, "LWPOLYLINE");
+        add(lines, 8, layer.name);
+        add(lines, 90, contour.length);
+        add(lines, 70, path.closed ? 1 : 0);
+        for (const point of contour) {
+          add(lines, 10, point.x.toFixed(4));
+          add(lines, 20, (result.height - point.y).toFixed(4));
+        }
       }
     }
   }

@@ -403,6 +403,52 @@ export function expandPolygonRadially(
   return out;
 }
 
+export function capLayerPathsByArea<T extends { area: number }>(
+  paths: T[],
+  isDarkLayer: boolean,
+  maxPaths: number,
+): T[] {
+  if (paths.length <= maxPaths) {
+    return [...paths];
+  }
+
+  const scored = [...paths].sort((a, b) => b.area - a.area);
+  if (!isDarkLayer) {
+    return scored.slice(0, maxPaths);
+  }
+
+  const detailReserve = Math.min(2, Math.max(0, maxPaths - 1));
+  const primary = scored.slice(0, Math.max(1, maxPaths - detailReserve));
+  const detail = scored
+    .slice(Math.max(1, maxPaths - detailReserve))
+    .filter((path) => path.area >= 8 && path.area <= 320)
+    .sort((a, b) => a.area - b.area)
+    .slice(0, detailReserve);
+
+  const selected = [...primary];
+  for (const path of detail) {
+    if (!selected.includes(path)) {
+      selected.push(path);
+    }
+  }
+
+  if (selected.length >= maxPaths) {
+    return selected.slice(0, maxPaths);
+  }
+
+  for (const path of scored) {
+    if (selected.includes(path)) {
+      continue;
+    }
+    selected.push(path);
+    if (selected.length >= maxPaths) {
+      break;
+    }
+  }
+
+  return selected;
+}
+
 export function layerArea(layer: VectorLayer): number {
   let total = 0;
   for (const path of layer.paths) {
@@ -411,12 +457,24 @@ export function layerArea(layer: VectorLayer): number {
   return total;
 }
 
+export function layerPrimaryPathArea(layer: VectorLayer): number {
+  let largest = 0;
+  for (const path of layer.paths) {
+    largest = Math.max(largest, polygonArea(path.points));
+  }
+  return largest;
+}
+
 export function hexLuminance(hex: string): number {
   const value = hex.replace("#", "");
   const r = Number.parseInt(value.slice(0, 2), 16) || 0;
   const g = Number.parseInt(value.slice(2, 4), 16) || 0;
   const b = Number.parseInt(value.slice(4, 6), 16) || 0;
   return r * 0.299 + g * 0.587 + b * 0.114;
+}
+
+export function normalizeLayerColor(hex: string): string {
+  return hexLuminance(hex) < 30 ? "#000000" : hex;
 }
 
 export function isBackgroundFlood(

@@ -36,6 +36,7 @@ Open [http://localhost:3000](http://localhost:3000).
 | `npm run test` | Run Vitest once |
 | `npm run test:watch` | Run Vitest in watch mode |
 | `npm run test:coverage` | Run Vitest with coverage |
+| `npm run build:vtracer-wasm` | Rebuild the client-side VTracer WASM bundle in `public/vendor/vtracer` |
 | `npm run check` | Run typecheck, lint, test, and build (CI-style) |
 | `npm run convert:cli` | CLI conversion (see [CLI](#cli)) |
 
@@ -45,36 +46,57 @@ Open [http://localhost:3000](http://localhost:3000).
 |------|---------|
 | `app/` | Next.js App Router: layout, metadata, global styles, main page |
 | `components/` | React UI components (preview, queue, settings, export, etc.) |
-| `lib/` | Shared logic: image decode, vectorize (quantize, trace, simplify, layers), export (SVG, EPS, DXF), storage (IndexedDB, localStorage) |
-| `workers/` | Web Worker: vectorization pipeline (orchestrates lib/vectorize and lib/export) |
-| `scripts/` | Node CLI for batch PNG → vector conversion |
-| `tests/` | Vitest tests (currently library/export logic; no UI or E2E) |
+| `lib/` | Shared logic: image decode, vectorize option mapping, export (SVG, EPS, DXF), storage (IndexedDB, localStorage) |
+| `rust/` | Rust + WASM wrapper around VTracer used by the browser worker |
+| `workers/` | Web Worker: loads the VTracer bundle and orchestrates vector export |
+| `scripts/` | Utility scripts, including the VTracer WASM build helper and the legacy CLI converter |
+| `tests/` | Vitest tests for library and exporter behavior |
+| `public/vendor/vtracer/` | Generated browser-ready VTracer WASM artifacts served by Next.js |
 
 ## Architecture overview
 
-1. **UI** (`app/page.tsx`, `components/`)  
+1. **UI** (`app/page.tsx`, `components/`)
    Handles upload, queue, selection, theme, and export actions. Persists preferences and in-session data.
 
-2. **Worker** (`workers/vectorize.worker.ts`)  
-   Receives decode-ready image data and settings, runs quantization → contour tracing → simplification → layer selection, then produces SVG/EPS/DXF via `lib/export`.
+2. **Worker** (`workers/vectorize.worker.ts`)
+   Receives decode-ready image data and settings, loads the client-side VTracer WASM bundle from `public/vendor/vtracer`, traces the image in the worker thread, then produces SVG, EPS, and DXF via `lib/export`.
 
-3. **Storage**  
-   - **localStorage** (via `lib/storage/localState.ts`): theme, slider position, conversion settings.  
-   - **IndexedDB** (via `lib/storage/indexedDb.ts`): file blobs and conversion results for the current session.  
-   Queue/result rehydration is intentionally limited (e.g. preferences only on reload) to avoid stale artifacts across algorithm changes.
+3. **VTracer WASM wrapper** (`rust/vtracer-wasm`)
+   Wraps the Rust `visioncortex` / VTracer pipeline for browser use through `wasm-bindgen`. The generated artifacts are checked into `public/vendor/vtracer` so the web app can run without rebuilding Rust on every install.
 
-4. **Browser requirements**  
+4. **Storage**
+   - **localStorage** (via `lib/storage/localState.ts`): theme, slider position, conversion settings.
+   - **IndexedDB** (via `lib/storage/indexedDb.ts`): file blobs and conversion results for the current session.
+   Queue/result rehydration is intentionally limited (for example, preferences only on reload) to avoid stale artifacts across algorithm changes.
+
+5. **Browser requirements**
    Web Workers, IndexedDB, localStorage, and modern ES support. No service worker is used; the app does not register one.
+
+## Rebuilding VTracer WASM
+
+The committed files in `public/vendor/vtracer` are enough to run the web app. Rebuild them only when you change the Rust wrapper.
+
+Prerequisites:
+
+- Rust toolchain from `rustup`
+- `wasm32-unknown-unknown` target: `rustup target add wasm32-unknown-unknown`
+- `wasm-bindgen-cli`: `cargo install wasm-bindgen-cli`
+
+Then run:
+
+```bash
+npm run build:vtracer-wasm
+```
 
 ## Testing
 
-- **Scope**: Tests in `tests/` cover pure library behavior (exporters, simplification, layer/polygon logic). There is no UI, integration, or E2E test suite yet.
+- **Scope**: Tests in `tests/` cover pure library behavior (exporters, option mapping, storage, and geometry helpers). There is no UI or E2E test suite yet.
 - **Run**: `npm test` (single run), `npm run test:watch`, `npm run test:coverage`.
 - **Environment**: Vitest uses Node by default; worker and DOM-dependent code are not exercised in the current suite.
 
 ## CLI
 
-The Node script `scripts/convert-cli.js` runs the same vectorization pipeline on PNG files from disk (for batch or CI use). Default paths are `example/input` and `example/generated`; create an `example/input` folder and add PNGs, or pass `--input` and `--output`.
+The Node script `scripts/convert-cli.js` runs the existing Node-side conversion pipeline on PNG files from disk (for batch or CI use). The web app uses the VTracer WASM worker path described above. Default paths are `example/input` and `example/generated`; create an `example/input` folder and add PNGs, or pass `--input` and `--output`.
 
 Example:
 
@@ -84,7 +106,7 @@ npm run convert:cli
 node scripts/convert-cli.js --input path/to/pngs --output path/to/out
 ```
 
-Supported options include `--paletteSize`, `--simplifyTolerance`, `--smoothing`, `--speckleThreshold`, `--cornerThreshold`, `--minLayerCoveragePct`, `--maxPathsPerLayer`, `--minLayerCount`, `--maxLayerCount`, `--targetPathsPerLayer`. Pass a numeric value after each option.
+Supported options include `--paletteSize`, `--simplifyTolerance`, `--smoothing`, `--speckleThreshold`, `--cornerThreshold`, `--minLayerCoveragePct`, `--maxPathsPerLayer`, `--minLayerCount`, `--maxLayerCount`, and `--targetPathsPerLayer`. Pass a numeric value after each option.
 
 ## Linting and typechecking
 
@@ -94,10 +116,10 @@ Supported options include `--paletteSize`, `--simplifyTolerance`, `--smoothing`,
 
 ## Contributing
 
-1. Fork/clone, then `npm install`.
+1. Fork or clone, then `npm install`.
 2. Use Node `>=20.9.0` and npm.
-3. Make changes; run `npm run check` before opening a PR.
-4. Keep behavior of the vectorization pipeline and storage contract in mind when changing `workers/vectorize.worker.ts` or `lib/storage/*`.
+3. Make changes and run `npm run check` before opening a PR.
+4. When changing the Rust wrapper, regenerate `public/vendor/vtracer` with `npm run build:vtracer-wasm`.
 
 ## License
 

@@ -894,6 +894,7 @@ button.danger:hover {
   position: absolute;
   inset: 0;
   overflow: hidden;
+  background: #fff;
 }
 
 .compare-divider {

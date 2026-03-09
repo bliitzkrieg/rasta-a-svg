@@ -26,8 +26,12 @@ export interface VectorPoint {
 
 export interface VectorPath {
   points: VectorPoint[];
+  holes?: VectorPoint[][];
   closed: boolean;
   nodeCount: number;
+  svgPathData?: string;
+  svgTranslateX?: number;
+  svgTranslateY?: number;
 }
 
 export interface VectorLayer {
@@ -98,13 +102,3 @@ export interface ConvertJobError {
   id: string;
   error: string;
 }
-
-export const DEFAULT_SETTINGS: ConversionSettings = {
-  paletteMode: "fixed",
-  paletteSize: 16,
-  smoothing: 0.28,
-  speckleThresholdPx: 4,
-  simplifyTolerancePx: 2.2,
-  cornerThresholdDeg: 40,
-  optimizePreset: "fidelity",
-};

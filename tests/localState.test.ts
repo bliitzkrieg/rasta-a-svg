@@ -8,7 +8,7 @@ import {
 import type { PersistedAppState } from "@/types/vector";
 
 describe("localState", () => {
-  const storageKey = "r2v-lab-state-v36";
+  const storageKey = "r2v-lab-state-v37";
 
   beforeEach(() => {
     const data = new Map<string, string>();
@@ -89,6 +89,26 @@ describe("localState", () => {
       );
       const state = loadPersistedState();
       expect(state.theme).toBe("light");
+    });
+
+    it("upgrades legacy default settings to the new defaults", () => {
+      (globalThis.localStorage as Storage).setItem(
+        storageKey,
+        JSON.stringify({
+          settings: {
+            paletteMode: "fixed",
+            paletteSize: 16,
+            smoothing: 0.28,
+            speckleThresholdPx: 4,
+            simplifyTolerancePx: 2.2,
+            cornerThresholdDeg: 40,
+            optimizePreset: "fidelity",
+          },
+        }),
+      );
+
+      const state = loadPersistedState();
+      expect(state.settings).toEqual(defaultPersistedState().settings);
     });
   });
 

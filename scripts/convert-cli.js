@@ -524,6 +524,14 @@ function polygonArea(points) {
   return Math.abs(area / 2);
 }
 
+function largestPathArea(paths) {
+  let largest = 0;
+  for (const path of paths) {
+    largest = Math.max(largest, path.area || 0);
+  }
+  return largest;
+}
+
 
 function alphaHex(opacity) {
   return Math.round(opacity * 255)
@@ -553,7 +561,7 @@ function toBezier(points) {
   return `${d}Z`;
 }
 
-function hexLuminance(hex: string): number {
+function hexLuminance(hex) {
   const value = hex.replace("#", "");
   const r = Number.parseInt(value.slice(0, 2), 16) || 0;
   const g = Number.parseInt(value.slice(2, 4), 16) || 0;
@@ -561,35 +569,15 @@ function hexLuminance(hex: string): number {
   return r * 0.299 + g * 0.587 + b * 0.114;
 }
 
-function isDarkOutlineColor(hex: string): boolean {
-  return hexLuminance(hex) < 40;
-}
-
-function strokeWidthForLayer(color: string, width: number, height: number): number {
-  const size = Math.max(width, height);
-
-  // small images need a slightly smaller seam-hiding stroke
-  if (size <= 256) return 0.45;
-  if (size <= 768) return 0.6;
-  return 0.75;
-}
-
 function toSVG(result) {
   const groups = result.layers
     .map((layer) => {
       const opacity = 1;
       const id = `${layer.color}${alphaHex(opacity)}`;
-      const isDark = isDarkOutlineColor(layer.color);
-      const seamStroke = strokeWidthForLayer(layer.color, result.width, result.height);
 
       const paths = layer.paths
         .map((p) => {
           const d = toBezier(p.points);
-
-          if (isDark) {
-            return `<path fill="${layer.color}" opacity="${opacity.toFixed(2)}" stroke="${layer.color}" stroke-width="${seamStroke.toFixed(2)}" stroke-linejoin="round" stroke-linecap="round" paint-order="stroke fill" d="${d}" />`;
-          }
-
           return `<path fill="${layer.color}" opacity="${opacity.toFixed(2)}" d="${d}" />`;
         })
         .join("\n");
@@ -783,7 +771,11 @@ function convertImage(image, options) {
     layer.paths = selectedPaths;
   }
 
-  const cleanLayers = layers.map((l) => ({
+  const orderedLayers = [...layers].sort(
+    (a, b) => largestPathArea(b.paths) - largestPathArea(a.paths)
+  );
+
+  const cleanLayers = orderedLayers.map((l) => ({
     name: l.name,
     color: l.color,
     paths: l.paths.map((p) => ({ points: p.points, closed: true }))

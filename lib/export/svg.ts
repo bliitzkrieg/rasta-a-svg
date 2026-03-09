@@ -1,36 +1,9 @@
-import type { ConversionResult, VectorPath, VectorPoint } from "@/types/vector";
+import type { ConversionResult, VectorPoint } from "@/types/vector";
 
 function alphaHex(opacity: number): string {
   return Math.round(Math.max(0, Math.min(1, opacity)) * 255)
     .toString(16)
     .padStart(2, "0");
-}
-
-function signedArea(points: VectorPoint[]): number {
-  let area = 0;
-  for (let i = 0; i < points.length; i += 1) {
-    const a = points[i];
-    const b = points[(i + 1) % points.length];
-    area += a.x * b.y - b.x * a.y;
-  }
-  return area / 2;
-}
-
-function pointInPolygon(point: VectorPoint, polygon: VectorPoint[]): boolean {
-  let inside = false;
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i, i += 1) {
-    const xi = polygon[i].x;
-    const yi = polygon[i].y;
-    const xj = polygon[j].x;
-    const yj = polygon[j].y;
-    const intersects =
-      yi > point.y !== yj > point.y &&
-      point.x < ((xj - xi) * (point.y - yi)) / (yj - yi || 1e-9) + xi;
-    if (intersects) {
-      inside = !inside;
-    }
-  }
-  return inside;
 }
 
 function toPolylinePath(points: VectorPoint[]): string {
@@ -137,125 +110,36 @@ function toBezierPath(points: VectorPoint[]): string {
   return `${d}Z`;
 }
 
-type Region = {
-  outer: VectorPath;
-  holes: VectorPath[];
-};
-
-function buildRegions(paths: VectorPath[]): Region[] {
-  const polys = paths
-    .filter((p) => p.points.length >= 3)
-    .map((path, idx) => ({
-      idx,
-      path,
-      absArea: Math.abs(signedArea(path.points)),
-      parent: -1,
-      depth: 0,
-    }))
-    .sort((a, b) => b.absArea - a.absArea);
-
-  for (let i = 0; i < polys.length; i += 1) {
-    const child = polys[i];
-    const probe = child.path.points[0];
-    let parentIndex = -1;
-    let bestArea = Number.POSITIVE_INFINITY;
-
-    for (let j = 0; j < i; j += 1) {
-      const candidate = polys[j];
-      if (candidate.absArea <= child.absArea) {
-        continue;
-      }
-      if (!pointInPolygon(probe, candidate.path.points)) {
-        continue;
-      }
-      if (candidate.absArea < bestArea) {
-        bestArea = candidate.absArea;
-        parentIndex = j;
-      }
-    }
-
-    child.parent = parentIndex;
-    child.depth = parentIndex === -1 ? 0 : polys[parentIndex].depth + 1;
-  }
-
-  const regionsByOuter = new Map<number, Region>();
-
-  for (let i = 0; i < polys.length; i += 1) {
-    const node = polys[i];
-    if (node.depth % 2 === 0) {
-      regionsByOuter.set(i, { outer: node.path, holes: [] });
-      continue;
-    }
-
-    let parent = node.parent;
-    while (parent !== -1 && polys[parent].depth % 2 !== 0) {
-      parent = polys[parent].parent;
-    }
-    if (parent !== -1 && regionsByOuter.has(parent)) {
-      regionsByOuter.get(parent)?.holes.push(node.path);
-    }
-  }
-
-  return Array.from(regionsByOuter.entries())
-    .sort((a, b) => polys[a[0]].absArea - polys[b[0]].absArea)
-    .map((entry) => entry[1]);
-}
-
 export function toSVG(
   result: Omit<ConversionResult, "svg" | "eps" | "dxf">,
 ): string {
-  function isExactBlack(hex: string): boolean {
-    return hex.replace("#", "").toLowerCase() === "000000";
-  }
-
-  function hexLuminance(hex: string): number {
-    const value = hex.replace("#", "");
-    const r = Number.parseInt(value.slice(0, 2), 16) || 0;
-    const g = Number.parseInt(value.slice(2, 4), 16) || 0;
-    const b = Number.parseInt(value.slice(4, 6), 16) || 0;
-    return r * 0.299 + g * 0.587 + b * 0.114;
-  }
-
-  function strokeWidthForResult(width: number, height: number): number {
-    const size = Math.max(width, height);
-    if (size <= 256) return 0.4;
-    if (size <= 768) return 0.55;
-    return 0.7;
-  }
-
-  const blackStrokeWidth = strokeWidthForResult(result.width, result.height);
-
-  // Render lighter/fill layers first, darkest layers last.
-  // This ensures outlines sit on top instead of getting clipped by fills.
-  const orderedLayers = [...result.layers].sort((a, b) => {
-    const aBlack = isExactBlack(a.color);
-    const bBlack = isExactBlack(b.color);
-
-    if (aBlack && !bBlack) return 1;
-    if (!aBlack && bBlack) return -1;
-
-    return hexLuminance(b.color) - hexLuminance(a.color);
-  });
-
-  const layerNodes = orderedLayers
+  const layerNodes = result.layers
     .map((layer) => {
       const opacity = 1;
       const id = `${layer.color}${alphaHex(opacity)}`;
-      const useSeamStroke = isExactBlack(layer.color);
-      const regions = buildRegions(layer.paths);
-
-      const paths = regions
-        .map((region) => {
-          const d = [
-            toBezierPath(region.outer.points),
-            ...region.holes.map((h) => toBezierPath(h.points)),
-          ].join(" ");
-
-          if (useSeamStroke) {
-            return `<path fill="${layer.color}" opacity="${opacity.toFixed(2)}" fill-rule="evenodd" stroke="${layer.color}" stroke-width="${blackStrokeWidth.toFixed(2)}" stroke-linejoin="round" stroke-linecap="round" paint-order="stroke fill" d="${d}" />`;
-          }
-
-          return `<path fill="${layer.color}" opacity="${opacity.toFixed(2)}" fill-rule="evenodd" d="${d}" />`;
+      const paths = layer.paths
+        .filter(
+          (path) =>
+            Boolean(path.svgPathData) ||
+            path.points.length >= 3 ||
+            (path.holes?.some((hole) => hole.length >= 3) ?? false),
+        )
+        .map((path) => {
+          const d = path.svgPathData
+            ? path.svgPathData
+            : [
+                path.points.length >= 3 ? toBezierPath(path.points) : "",
+                ...(path.holes ?? [])
+                  .filter((hole) => hole.length >= 3)
+                  .map((hole) => toBezierPath(hole)),
+              ]
+                .filter(Boolean)
+                .join(" ");
+          const transform =
+            path.svgTranslateX !== undefined || path.svgTranslateY !== undefined
+              ? ` transform="translate(${(path.svgTranslateX ?? 0).toFixed(2)} ${(path.svgTranslateY ?? 0).toFixed(2)})"`
+              : "";
+          return `<path fill="${layer.color}" opacity="${opacity.toFixed(2)}" d="${d}"${transform} />`;
         })
         .join("\n");
 

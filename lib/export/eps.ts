@@ -28,14 +28,12 @@ export function toEPSLevel2(result: Omit<ConversionResult, "svg" | "eps" | "dxf"
       if (!path.points.length) {
         continue;
       }
-      const first = path.points[0];
       lines.push("newpath");
-      lines.push(`${first.x.toFixed(2)} ${first.y.toFixed(2)} moveto`);
-      for (let i = 1; i < path.points.length; i += 1) {
-        const p = path.points[i];
-        lines.push(`${p.x.toFixed(2)} ${p.y.toFixed(2)} lineto`);
+      appendContour(lines, path.points);
+      for (const hole of path.holes ?? []) {
+        appendContour(lines, hole);
       }
-      lines.push("closepath fill");
+      lines.push((path.holes?.length ?? 0) > 0 ? "eofill" : "fill");
     }
   }
 
@@ -43,4 +41,17 @@ export function toEPSLevel2(result: Omit<ConversionResult, "svg" | "eps" | "dxf"
   lines.push("showpage");
   lines.push("%%EOF");
   return `${lines.join("\n")}\n`;
+}
+
+function appendContour(lines: string[], points: { x: number; y: number }[]): void {
+  if (!points.length) {
+    return;
+  }
+  const first = points[0];
+  lines.push(`${first.x.toFixed(2)} ${first.y.toFixed(2)} moveto`);
+  for (let i = 1; i < points.length; i += 1) {
+    const p = points[i];
+    lines.push(`${p.x.toFixed(2)} ${p.y.toFixed(2)} lineto`);
+  }
+  lines.push("closepath");
 }
