@@ -46,7 +46,7 @@ describe("localState", () => {
       expect(state.sliderPosition).toBe(50);
       expect(state.theme).toBe("system");
       expect(state.settings).toBeDefined();
-      expect(state.settings.paletteSize).toBe(16);
+      expect(state.settings.mode).toBe("none");
     });
   });
 
@@ -69,7 +69,10 @@ describe("localState", () => {
       const stored: Partial<PersistedAppState> = {
         sliderPosition: 75,
         theme: "dark",
-        settings: { ...defaultPersistedState().settings, paletteSize: 8 },
+        settings: {
+          ...defaultPersistedState().settings,
+          pathPrecision: 12,
+        },
       };
       (globalThis.localStorage as Storage).setItem(
         storageKey,
@@ -78,7 +81,7 @@ describe("localState", () => {
       const state = loadPersistedState();
       expect(state.sliderPosition).toBe(75);
       expect(state.theme).toBe("dark");
-      expect(state.settings.paletteSize).toBe(8);
+      expect(state.settings.pathPrecision).toBe(12);
       expect(state.queue).toEqual([]);
     });
 

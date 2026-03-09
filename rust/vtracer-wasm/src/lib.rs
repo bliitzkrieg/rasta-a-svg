@@ -2,22 +2,34 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::f64::consts::PI;
 use wasm_bindgen::prelude::*;
-use visioncortex::color_clusters::{KeyingAction, Runner, RunnerConfig, HIERARCHICAL_MAX};
-use visioncortex::{
-    Color, ColorImage, CompoundPath, CompoundPathElement, PathI32, PathSimplifyMode, PointF64,
+use visioncortex::color_clusters::{
+    Clusters as ColorClusters, KeyingAction, Runner, RunnerConfig, HIERARCHICAL_MAX,
 };
+use visioncortex::clusters::Clusters as BinaryClusters;
+use visioncortex::{
+    Color, ColorImage, ColorName, CompoundPath, CompoundPathElement, PathI32, PathSimplifyMode,
+    PointF64,
+};
+
+const KEYING_THRESHOLD: f32 = 0.2;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[allow(non_snake_case)]
 struct TraceOptions {
+    #[serde(default = "default_clustering_mode")]
+    clusteringMode: String,
+    #[serde(default = "default_hierarchical")]
+    hierarchical: String,
     colorPrecision: i32,
     filterSpeckle: usize,
     layerDifference: i32,
     cornerThreshold: f64,
     lengthThreshold: f64,
+    #[serde(default = "default_max_iterations")]
     maxIterations: usize,
-    pathPrecision: Option<u32>,
+    #[serde(default = "default_path_precision")]
+    pathPrecision: u32,
     spliceThreshold: f64,
     mode: String,
 }
@@ -85,20 +97,140 @@ pub fn trace_rgba_to_json(
         return Err(JsValue::from_str("RGBA buffer length does not match image size."));
     }
 
-    let mut color_image = build_color_image(width, height, &pixels);
-    let key_color = find_unused_opaque_color(&color_image);
-    let use_keying = should_key_image(&color_image);
-    if use_keying {
-        replace_transparent_pixels(&mut color_image, key_color);
-    }
+    let output = match options.clusteringMode.as_str() {
+        "binary" => trace_binary_image(width, height, &pixels, &options),
+        _ => trace_color_image(width, height, &pixels, &options)?,
+    };
+
+    serde_json::to_string(&output)
+        .map_err(|error| JsValue::from_str(&format!("Failed to serialize trace output: {error}")))
+}
+
+fn default_clustering_mode() -> String {
+    String::from("color")
+}
+
+fn default_hierarchical() -> String {
+    String::from("stacked")
+}
+
+fn default_max_iterations() -> usize {
+    10
+}
+
+fn default_path_precision() -> u32 {
+    8
+}
+
+fn build_color_image(width: u32, height: u32, pixels: &[u8]) -> ColorImage {
+    let mut image = ColorImage::new_w_h(width as usize, height as usize);
+    image.pixels = pixels.to_vec();
+    image
+}
+
+fn trace_color_image(
+    width: u32,
+    height: u32,
+    pixels: &[u8],
+    options: &TraceOptions,
+) -> Result<TraceOutput, JsValue> {
+    let mut image = build_color_image(width, height, pixels);
+    let use_keying = should_key_image(&image);
+    let key_color = if use_keying {
+        let color = find_unused_opaque_color(&image);
+        replace_transparent_pixels(&mut image, color);
+        color
+    } else {
+        Color::default()
+    };
+
     let clusters = run_color_trace(
-        color_image,
+        image,
         width as usize * height as usize,
-        &options,
+        options,
         key_color,
-        use_keying,
     )?;
 
+    Ok(build_color_output(width, height, &clusters, options))
+}
+
+fn trace_binary_image(
+    width: u32,
+    height: u32,
+    pixels: &[u8],
+    options: &TraceOptions,
+) -> TraceOutput {
+    let image = build_color_image(width, height, pixels);
+    let binary_image = image.to_binary_image(|pixel| pixel.r < 128);
+    let clusters = binary_image.to_clusters(false);
+    build_binary_output(width, height, &clusters, options)
+}
+
+fn run_color_trace(
+    image: ColorImage,
+    total_pixels: usize,
+    options: &TraceOptions,
+    key_color: Color,
+) -> Result<ColorClusters, JsValue> {
+    let runner = Runner::new(
+        RunnerConfig {
+            diagonal: options.layerDifference == 0,
+            hierarchical: HIERARCHICAL_MAX,
+            batch_size: 25600,
+            good_min_area: speckle_area_threshold(options.filterSpeckle),
+            good_max_area: total_pixels,
+            is_same_color_a: 8 - options.colorPrecision,
+            is_same_color_b: 1,
+            deepen_diff: options.layerDifference,
+            hollow_neighbours: 1,
+            key_color,
+            keying_action: if options.hierarchical == "cutout" {
+                KeyingAction::Keep
+            } else {
+                KeyingAction::Discard
+            },
+        },
+        image,
+    );
+
+    let mut builder = runner.start();
+    while !builder.tick() {}
+    let clusters = builder.result();
+
+    if options.hierarchical != "cutout" {
+        return Ok(clusters);
+    }
+
+    let view = clusters.view();
+    let image = view.to_color_image();
+    let runner = Runner::new(
+        RunnerConfig {
+            diagonal: false,
+            hierarchical: 64,
+            batch_size: 25600,
+            good_min_area: 0,
+            good_max_area: image.width * image.height,
+            is_same_color_a: 0,
+            is_same_color_b: 1,
+            deepen_diff: 0,
+            hollow_neighbours: 0,
+            key_color: Default::default(),
+            keying_action: KeyingAction::Discard,
+        },
+        image,
+    );
+
+    let mut builder = runner.start();
+    while !builder.tick() {}
+    Ok(builder.result())
+}
+
+fn build_color_output(
+    width: u32,
+    height: u32,
+    clusters: &ColorClusters,
+    options: &TraceOptions,
+) -> TraceOutput {
     let mut layers: Vec<TraceLayer> = Vec::new();
     let mut layer_lookup: HashMap<String, usize> = HashMap::new();
     let mut svg_entries: Vec<String> = Vec::new();
@@ -119,7 +251,7 @@ pub fn trace_rgba_to_json(
         );
 
         let (svg_path_data, svg_offset) =
-            compound.to_svg_string(true, PointF64::default(), options.pathPrecision);
+            compound.to_svg_string(true, PointF64::default(), Some(options.pathPrecision));
         svg_entries.push(svg_entry(&fill_color, &svg_path_data, svg_offset));
 
         let trace_path = compound_to_trace_path(&compound, svg_path_data, svg_offset);
@@ -139,7 +271,7 @@ pub fn trace_rgba_to_json(
         }
     }
 
-    let output = TraceOutput {
+    TraceOutput {
         width,
         height,
         layers,
@@ -148,49 +280,68 @@ pub fn trace_rgba_to_json(
             node_count,
             path_count,
         },
+    }
+}
+
+fn build_binary_output(
+    width: u32,
+    height: u32,
+    clusters: &BinaryClusters,
+    options: &TraceOptions,
+) -> TraceOutput {
+    let fill_color = Color::color(&ColorName::Black).to_hex_string();
+    let min_area = speckle_area_threshold(options.filterSpeckle);
+    let mut paths = Vec::new();
+    let mut svg_entries = Vec::new();
+    let mut node_count = 0usize;
+
+    for index in 0..clusters.len() {
+        let cluster = clusters.get_cluster(index);
+        if cluster.size() < min_area {
+            continue;
+        }
+
+        let compound = cluster.to_compound_path(
+            to_simplify_mode(&options.mode),
+            deg_to_rad(options.cornerThreshold),
+            options.lengthThreshold,
+            options.maxIterations,
+            deg_to_rad(options.spliceThreshold),
+        );
+        let (svg_path_data, svg_offset) =
+            compound.to_svg_string(true, PointF64::default(), Some(options.pathPrecision));
+        svg_entries.push(svg_entry(&fill_color, &svg_path_data, svg_offset));
+
+        let trace_path = compound_to_trace_path(&compound, svg_path_data, svg_offset);
+        node_count += trace_path.node_count;
+        paths.push(trace_path);
+    }
+
+    let path_count = paths.len();
+    let layers = if paths.is_empty() {
+        Vec::new()
+    } else {
+        vec![TraceLayer {
+            name: String::from("COLOR_01"),
+            color: fill_color,
+            paths,
+        }]
     };
 
-    serde_json::to_string(&output)
-        .map_err(|error| JsValue::from_str(&format!("Failed to serialize trace output: {error}")))
-}
-
-fn build_color_image(width: u32, height: u32, pixels: &[u8]) -> ColorImage {
-    let mut image = ColorImage::new_w_h(width as usize, height as usize);
-    image.pixels = pixels.to_vec();
-    image
-}
-
-fn run_color_trace(
-    image: ColorImage,
-    total_pixels: usize,
-    options: &TraceOptions,
-    key_color: Color,
-    use_keying: bool,
-) -> Result<visioncortex::color_clusters::Clusters, JsValue> {
-    let runner = Runner::new(
-        RunnerConfig {
-            diagonal: false,
-            hierarchical: HIERARCHICAL_MAX,
-            batch_size: 25600,
-            good_min_area: options.filterSpeckle.saturating_mul(options.filterSpeckle),
-            good_max_area: total_pixels,
-            is_same_color_a: 8 - options.colorPrecision,
-            is_same_color_b: 1,
-            deepen_diff: options.layerDifference,
-            hollow_neighbours: 1,
-            key_color,
-            keying_action: if use_keying {
-                KeyingAction::Discard
-            } else {
-                KeyingAction::Keep
-            },
+    TraceOutput {
+        width,
+        height,
+        layers,
+        svg: build_svg(width, height, &svg_entries),
+        metrics: TraceMetrics {
+            node_count,
+            path_count,
         },
-        image,
-    );
+    }
+}
 
-    let mut builder = runner.start();
-    while !builder.tick() {}
-    Ok(builder.result())
+fn speckle_area_threshold(value: usize) -> usize {
+    value.saturating_mul(value)
 }
 
 fn deg_to_rad(value: f64) -> f64 {
@@ -216,37 +367,42 @@ fn build_svg(width: u32, height: u32, svg_entries: &[String]) -> String {
 }
 
 fn should_key_image(image: &ColorImage) -> bool {
-    let total_pixels = image.width * image.height;
-    let total_transparent = image
-        .pixels
-        .chunks_exact(4)
-        .filter(|rgba| rgba[3] < 255)
-        .count();
-
-    if total_transparent < image.width || total_transparent * 100 < total_pixels {
+    if image.width == 0 || image.height == 0 {
         return false;
     }
 
-    let scanline_threshold = image.width / 2;
-    image
-        .pixels
-        .chunks_exact(image.width * 4)
-        .any(|scanline| {
-            scanline
-                .chunks_exact(4)
-                .filter(|rgba| rgba[3] < 255)
-                .count()
-                > scanline_threshold
-        })
+    let threshold = ((image.width * 2) as f32 * KEYING_THRESHOLD) as usize;
+    let mut transparent = 0usize;
+    let y_positions = [
+        0,
+        image.height / 4,
+        image.height / 2,
+        3 * image.height / 4,
+        image.height - 1,
+    ];
+
+    for y in y_positions {
+        for x in 0..image.width {
+            let offset = (y * image.width + x) * 4 + 3;
+            if image.pixels[offset] == 0 {
+                transparent += 1;
+            }
+            if transparent >= threshold {
+                return true;
+            }
+        }
+    }
+
+    false
 }
 
 fn replace_transparent_pixels(image: &mut ColorImage, key_color: Color) {
     for rgba in image.pixels.chunks_exact_mut(4) {
-        if rgba[3] < 255 {
+        if rgba[3] == 0 {
             rgba[0] = key_color.r;
             rgba[1] = key_color.g;
             rgba[2] = key_color.b;
-            rgba[3] = key_color.a;
+            rgba[3] = 255;
         }
     }
 }
@@ -266,6 +422,7 @@ fn find_unused_opaque_color(image: &ColorImage) -> Color {
         Color::new_rgba(255, 255, 0, 255),
         Color::new_rgba(0, 255, 255, 255),
         Color::new_rgba(255, 0, 255, 255),
+        Color::new_rgba(128, 128, 128, 255),
     ];
 
     for candidate in candidates {

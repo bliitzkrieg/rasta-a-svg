@@ -1,8 +1,13 @@
-import type { ConversionSettings } from "@/types/vector";
-
-export type VTracerMode = "spline" | "polygon" | "none";
+import type {
+  ConversionSettings,
+  VTracerClusteringMode,
+  VTracerHierarchical,
+  VTracerMode,
+} from "@/types/vector";
 
 export interface VTracerOptions {
+  clusteringMode: VTracerClusteringMode;
+  hierarchical: VTracerHierarchical;
   colorPrecision: number;
   filterSpeckle: number;
   layerDifference: number;
@@ -21,55 +26,19 @@ function clamp(value: number, min: number, max: number): number {
 export function toVTracerOptions(
   settings: ConversionSettings,
 ): VTracerOptions {
-  const paletteSize = clamp(settings.paletteSize, 2, 16);
-  const inverseDetail = (16 - paletteSize) / 14;
-  const presetLengthFactor =
-    settings.optimizePreset === "fidelity"
-      ? 0.875
-      : settings.optimizePreset === "minimal-nodes"
-        ? 1.5
-        : 1;
-
-  const mode: VTracerMode =
-    settings.optimizePreset === "minimal-nodes" ? "polygon" : "spline";
-
   return {
-    colorPrecision: clamp(
-      Math.round(
-        (settings.paletteMode === "auto" ? 7 : 6) + (1 - inverseDetail) * 2,
-      ),
-      4,
-      8,
-    ),
-    filterSpeckle: clamp(Math.round(settings.speckleThresholdPx), 0, 1000),
-    layerDifference: clamp(
-      Math.round(
-        (settings.paletteMode === "auto" ? 48 : 16) +
-          inverseDetail * (settings.paletteMode === "auto" ? 24 : 20),
-      ),
-      8,
-      96,
-    ),
-    cornerThreshold: clamp(Math.round(settings.cornerThresholdDeg), 0, 180),
+    clusteringMode: settings.clusteringMode,
+    hierarchical: settings.hierarchical,
+    colorPrecision: clamp(Math.round(settings.colorPrecision), 1, 8),
+    filterSpeckle: clamp(Math.round(settings.filterSpeckle), 0, 16),
+    layerDifference: clamp(Math.round(settings.layerDifference), 0, 255),
+    cornerThreshold: clamp(Math.round(settings.cornerThreshold), 0, 180),
     lengthThreshold: Number(
-      clamp(
-        settings.simplifyTolerancePx * presetLengthFactor,
-        3.5,
-        12,
-      ).toFixed(2),
+      clamp(settings.lengthThreshold, 3.5, 10).toFixed(2),
     ),
-    maxIterations:
-      settings.optimizePreset === "fidelity"
-        ? 12
-        : settings.optimizePreset === "minimal-nodes"
-          ? 6
-          : 10,
-    pathPrecision: 2,
-    spliceThreshold: clamp(
-      Math.round(10 + settings.smoothing * 100),
-      0,
-      180,
-    ),
-    mode,
+    maxIterations: 10,
+    pathPrecision: clamp(Math.round(settings.pathPrecision), 0, 16),
+    spliceThreshold: clamp(Math.round(settings.spliceThreshold), 0, 180),
+    mode: settings.mode,
   };
 }

@@ -10,8 +10,9 @@ export type Point = { x: number; y: number };
 
 export function simplifyToleranceForPreset(
   baseTolerance: number,
-  preset: "fidelity" | "balanced" | "minimal-nodes",
+  preset: "strict-fidelity" | "fidelity" | "balanced" | "minimal-nodes",
 ): number {
+  if (preset === "strict-fidelity") return Math.max(0.18, baseTolerance * 0.4);
   if (preset === "fidelity") return Math.max(0.25, baseTolerance * 0.55);
   if (preset === "minimal-nodes") return Math.max(1.2, baseTolerance * 1.7);
   return Math.max(0.45, baseTolerance * 0.85);

@@ -5,18 +5,23 @@ export type QueueStatus =
   | "error"
   | "canceled";
 
-export type OptimizePreset = "fidelity" | "balanced" | "minimal-nodes";
+export type VTracerClusteringMode = "color" | "binary";
 
-export type PaletteMode = "auto" | "fixed";
+export type VTracerHierarchical = "stacked" | "cutout";
+
+export type VTracerMode = "spline" | "polygon" | "none";
 
 export interface ConversionSettings {
-  paletteMode: PaletteMode;
-  paletteSize: number;
-  smoothing: number;
-  speckleThresholdPx: number;
-  simplifyTolerancePx: number;
-  cornerThresholdDeg: number;
-  optimizePreset: OptimizePreset;
+  clusteringMode: VTracerClusteringMode;
+  hierarchical: VTracerHierarchical;
+  filterSpeckle: number;
+  colorPrecision: number;
+  layerDifference: number;
+  mode: VTracerMode;
+  cornerThreshold: number;
+  lengthThreshold: number;
+  spliceThreshold: number;
+  pathPrecision: number;
 }
 
 export interface VectorPoint {

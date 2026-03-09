@@ -894,7 +894,6 @@ button.danger:hover {
   position: absolute;
   inset: 0;
   overflow: hidden;
-  background: #fff;
 }
 
 .compare-divider {
@@ -987,6 +986,9 @@ button.danger:hover {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
+  max-height: 320px;
+  overflow: auto;
+  padding-right: 0.2rem;
 }
 
 .layer-row {
