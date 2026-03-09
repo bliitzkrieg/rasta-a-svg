@@ -4,14 +4,17 @@ import { useEffect, useRef } from "react";
 import { decodeBlobToImageData } from "@/lib/image/decode";
 import { getFileBlob, putResult } from "@/lib/storage/indexedDb";
 import { withUpdated } from "@/lib/queueUtils";
+import { QUOTA_BLOCKED_REASON } from "@/types/quota";
 import type {
   ConversionResult,
   ConvertJobError,
   ConvertJobProgress,
   ConvertJobRequest,
   ConvertJobResult,
+  ImageQueueItem,
   PersistedAppState,
 } from "@/types/vector";
+import type { QuotaAuthorizeResponse } from "@/types/quota";
 
 type WorkerOutMessage =
   | { type: "progress"; payload: ConvertJobProgress }
@@ -27,6 +30,7 @@ export function useConversionWorker(
   setState: React.Dispatch<React.SetStateAction<PersistedAppState>>,
   setResults: React.Dispatch<React.SetStateAction<Record<string, ConversionResult>>>,
   setActivePhase: React.Dispatch<React.SetStateAction<string>>,
+  authorizeItem: (item: ImageQueueItem) => Promise<QuotaAuthorizeResponse>,
 ): void {
   const workerRef = useRef<Worker | null>(null);
   const processingRef = useRef<string | null>(null);
@@ -100,19 +104,78 @@ export function useConversionWorker(
     if (!worker) return;
 
     processingRef.current = next.id;
-    setState((current) => ({
-      ...current,
-      queue: withUpdated(current.queue, next.id, (item) => ({
-        ...item,
-        status: "processing",
-        progress: 1,
-        error: undefined,
-        updatedAt: new Date().toISOString(),
-      })),
-    }));
+    setActivePhase("Checking quota");
 
     void (async () => {
       try {
+        const authorization = await authorizeItem(next);
+        if (!authorization.granted) {
+          processingRef.current = null;
+          setActivePhase("Idle");
+
+          if (authorization.reason === "LIMIT_REACHED") {
+            setState((current) => {
+              let shouldBlockRemainder = false;
+              const updatedAt = new Date().toISOString();
+
+              return {
+                ...current,
+                queue: current.queue.map((item) => {
+                  if (item.id === next.id) {
+                    shouldBlockRemainder = true;
+                    return {
+                      ...item,
+                      status: "awaiting_quota",
+                      quotaBlockedReason: QUOTA_BLOCKED_REASON,
+                      progress: 0,
+                      updatedAt,
+                    };
+                  }
+
+                  if (
+                    shouldBlockRemainder &&
+                    (item.status === "queued" || item.status === "awaiting_quota")
+                  ) {
+                    return {
+                      ...item,
+                      status: "awaiting_quota",
+                      quotaBlockedReason: QUOTA_BLOCKED_REASON,
+                      progress: 0,
+                      updatedAt,
+                    };
+                  }
+
+                  return item;
+                }),
+              };
+            });
+            return;
+          }
+
+          setState((current) => ({
+            ...current,
+            queue: withUpdated(current.queue, next.id, (item) => ({
+              ...item,
+              status: "error",
+              error: "Sign in to start processing queued files.",
+              updatedAt: new Date().toISOString(),
+            })),
+          }));
+          return;
+        }
+
+        setState((current) => ({
+          ...current,
+          queue: withUpdated(current.queue, next.id, (item) => ({
+            ...item,
+            status: "processing",
+            progress: 1,
+            error: undefined,
+            quotaBlockedReason: undefined,
+            updatedAt: new Date().toISOString(),
+          })),
+        }));
+
         const blob = await getFileBlob(next.id);
         if (!blob) throw new Error("Missing source image data.");
         const decoded = await decodeBlobToImageData(blob);
@@ -126,6 +189,7 @@ export function useConversionWorker(
         worker.postMessage({ type: "convert", payload });
       } catch (error) {
         processingRef.current = null;
+        setActivePhase("Idle");
         const messageText =
           error instanceof Error ? error.message : "Unexpected conversion failure.";
         setState((current) => ({
@@ -139,5 +203,5 @@ export function useConversionWorker(
         }));
       }
     })();
-  }, [state.queue, state.settings, setState]);
+  }, [authorizeItem, setActivePhase, setState, state.queue, state.settings]);
 }

@@ -1,24 +1,26 @@
 .page {
-  --topbar-height: 0px;
-  --page-frame-offset: 4.5rem;
-  min-height: 100vh;
-  max-width: 1480px;
+  max-width: 1280px;
   margin: 0 auto;
-  padding: 0.5rem 1.5rem 3rem;
-  position: relative;
+  padding: 0.9rem 1.5rem 3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
 }
 
-.page[data-dragging="true"] {
-  cursor: copy;
+.topbar,
+.topbarActions,
+.navLinks,
+.authRow,
+.heroActions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
 }
 
 .topbar {
-  display: flex;
   justify-content: space-between;
-  align-items: center;
   gap: 1rem 2rem;
-  flex-wrap: wrap;
-  margin-bottom: 1.5rem;
 }
 
 .brandLink {
@@ -32,90 +34,52 @@
   height: auto;
 }
 
-.topbarControls {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 0.75rem 0.5rem;
-  flex-wrap: wrap;
+.navLinks a,
+.inlineLink {
+  color: var(--ink);
+  text-decoration-color: color-mix(in srgb, var(--ink-soft) 35%, transparent);
+  text-underline-offset: 0.14em;
 }
 
-.statusRow,
-.actionRow {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.statusPill {
-  display: inline-flex;
-  align-items: center;
-  min-height: 2rem;
-  padding: 0.35rem 0.75rem;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--surface-soft);
-  color: var(--ink-soft);
-  font-size: 0.8rem;
-  letter-spacing: 0.01em;
-}
-
-.statusPill[data-offline="true"] {
-  color: var(--danger);
-  border-color: color-mix(in srgb, var(--danger) 35%, var(--line));
-}
-
-.actionRow button {
-  min-height: 2rem;
-  padding: 0.35rem 0.75rem;
-  font-size: 0.8rem;
-}
-
-.clerkControls {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.clerkControls :global(button),
-.clerkControls :global(a) {
+.authRow :global(button),
+.authRow :global(a),
+.primaryCta,
+.secondaryCta {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 2rem;
-  height: 2rem;
-  padding: 0 0.75rem;
-  font-size: 0.8rem;
-  border: 1px solid var(--line);
+  min-height: 2.6rem;
+  padding: 0 1rem;
   border-radius: 999px;
-  background: var(--panel);
+  border: 1px solid color-mix(in srgb, var(--brand-primary) 22%, var(--line));
+  text-decoration: none;
+}
+
+.authRow :global(button),
+.authRow :global(a),
+.secondaryCta {
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
   color: var(--ink);
-  box-sizing: border-box;
 }
 
-.clerkControls :global(button:hover),
-.clerkControls :global(a:hover) {
-  border-color: var(--brand-primary);
-  transform: translateY(0px);
+.primaryCta {
+  background: linear-gradient(
+    135deg,
+    var(--brand-primary),
+    color-mix(in srgb, var(--brand-primary) 72%, #091b26)
+  );
+  color: #fff;
+  font-weight: 700;
 }
 
-.clerkAvatarWrap {
+.avatarWrap {
   display: inline-flex;
-  align-items: center;
 }
 
-.clerkAvatarWrap :global(button) {
+.avatarWrap :global(button) {
   background: transparent !important;
   border: none !important;
   padding: 0;
-  transform: translateY(1px);
-}
-
-.clerkAvatarWrap :global(button:hover) {
-  background: color-mix(in srgb, var(--line) 20%, transparent) !important;
-  border: none !important;
-  transform: translateY(1px);
 }
 
 .clerkAvatar {
@@ -124,121 +88,174 @@
   border: none;
 }
 
-.workspace {
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 0.3rem 0.65rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--brand-primary) 24%, var(--line));
+  background: color-mix(in srgb, var(--brand-primary) 8%, var(--panel));
+  color: var(--brand-primary);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.hero {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
-  gap: 1.5rem;
-  align-items: start;
-}
-
-.workspace[data-empty="true"] {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.previewColumn {
-  min-width: 0;
-  position: sticky;
-  top: 1.5rem;
-  display: flex;
-  flex-direction: column;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.75fr);
   gap: 1rem;
 }
 
-.sidebar {
+.heroMain,
+.heroSide,
+.section,
+.infoCard,
+.stepCard,
+.summaryCard,
+.finalCta {
   display: flex;
   flex-direction: column;
-  gap: 1.15rem;
 }
 
-.dropOverlay {
-  position: fixed;
-  inset: 1rem;
-  display: grid;
-  place-items: center;
-  border: 2px dashed color-mix(in srgb, var(--brand-primary) 55%, var(--line));
+.heroMain {
+  gap: 0.95rem;
+  padding: clamp(1.4rem, 2vw, 2rem);
   border-radius: 32px;
-  background: color-mix(in srgb, var(--brand-primary) 10%, var(--bg));
-  color: var(--ink);
-  font-size: clamp(1.1rem, 2vw, 1.5rem);
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  pointer-events: none;
-  z-index: 50;
-  backdrop-filter: blur(8px);
+  border: 1px solid color-mix(in srgb, var(--brand-primary) 18%, var(--line));
+  background:
+    radial-gradient(
+      circle at top left,
+      color-mix(in srgb, var(--brand-primary) 14%, transparent),
+      transparent 22rem
+    ),
+    radial-gradient(
+      circle at bottom right,
+      color-mix(in srgb, var(--brand-secondary) 14%, transparent),
+      transparent 20rem
+    ),
+    linear-gradient(
+      160deg,
+      color-mix(in srgb, var(--panel) 97%, transparent),
+      color-mix(in srgb, var(--surface-soft) 94%, transparent)
+    );
+  box-shadow: var(--shadow-lg);
 }
 
-.error {
+.heroMain h1,
+.sectionIntro h2,
+.finalCta h2 {
   margin: 0;
-  padding: 0.85rem 1rem;
-  border: 1px solid color-mix(in srgb, var(--danger) 30%, var(--line));
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--danger) 9%, var(--panel));
-  color: var(--danger);
-  font-size: 0.9rem;
+  line-height: 0.95;
+  letter-spacing: -0.05em;
 }
 
-.footer {
+.heroMain h1 {
+  max-width: 11ch;
+  font-size: clamp(2.8rem, 5vw, 5rem);
+}
+
+.heroBody,
+.sectionBody,
+.infoCard p,
+.stepCard p,
+.summaryCard p {
+  margin: 0;
+  color: var(--ink-muted);
+  line-height: 1.65;
+}
+
+.heroList {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.45rem;
+  color: var(--ink);
+}
+
+.heroSide {
+  gap: 1rem;
+}
+
+.summaryCard,
+.infoCard,
+.stepCard,
+.pricingWrap,
+.finalCta {
+  padding: 1.15rem;
+  border-radius: 24px;
+  border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  box-shadow: var(--shadow-md);
+}
+
+.summaryCard {
+  gap: 0.75rem;
+}
+
+.summaryCard h2,
+.infoCard h3,
+.stepCard h3 {
+  margin: 0;
+  letter-spacing: -0.03em;
+}
+
+.section {
+  gap: 1rem;
+}
+
+.sectionIntro {
   display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  max-width: 48rem;
+}
+
+.sectionIntro h2,
+.finalCta h2 {
+  font-size: clamp(1.9rem, 3vw, 3rem);
+}
+
+.cardGrid,
+.stepGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.infoCard,
+.stepCard {
+  gap: 0.7rem;
+  min-height: 100%;
+}
+
+.stepCard strong {
+  font-size: 0.84rem;
+  color: var(--brand-primary);
+}
+
+.pricingWrap {
+  padding: 1rem;
+}
+
+.finalCta {
+  flex-direction: row;
+  justify-content: space-between;
   align-items: center;
-  justify-content: flex-end;
-  gap: 0.75rem 1rem;
-  flex-wrap: wrap;
-  margin-top: 1.5rem;
-  padding: 0 0.2rem;
-  color: color-mix(in srgb, var(--ink-soft) 82%, transparent);
-  font-size: 0.78rem;
-  line-height: 1.5;
-  text-align: right;
-}
-
-.footerHeart {
-  color: color-mix(in srgb, var(--danger) 72%, var(--ink-soft));
-}
-
-.footerLink {
-  display: inline-block;
-  color: inherit;
-  text-decoration-color: color-mix(in srgb, var(--ink-soft) 35%, transparent);
-  text-underline-offset: 0.14em;
-  transition:
-    color 0.15s ease,
-    text-decoration-color 0.15s ease,
-    transform 0.15s ease;
-}
-
-.footerLink:hover {
-  color: var(--brand-primary);
-  text-decoration-color: currentColor;
-  animation: footerLinkBounce 0.45s ease;
-}
-
-.footerLink:focus-visible {
-  color: var(--brand-primary);
-  text-decoration-color: currentColor;
-}
-
-@keyframes footerLinkBounce {
-  0% {
-    transform: translateY(0) scale(1);
-  }
-  35% {
-    transform: translateY(-2px) scale(1.03);
-  }
-  65% {
-    transform: translateY(1px) scale(0.99);
-  }
-  100% {
-    transform: translateY(0) scale(1);
-  }
+  gap: 1rem;
 }
 
 @media (max-width: 1100px) {
-  .workspace {
+  .hero,
+  .cardGrid,
+  .stepGrid {
     grid-template-columns: 1fr;
   }
 
-  .previewColumn {
-    position: static;
+  .heroMain h1 {
+    max-width: none;
   }
 }
 
@@ -247,16 +264,12 @@
     padding: 1rem 1rem 2rem;
   }
 
-  .topbar {
+  .topbar,
+  .finalCta {
     align-items: flex-start;
   }
 
-  .topbarControls {
-    justify-content: flex-start;
-  }
-
-  .footer {
-    flex-direction: column;
-    align-items: flex-start;
+  .heroMain h1 {
+    font-size: clamp(2.2rem, 11vw, 3.6rem);
   }
 }

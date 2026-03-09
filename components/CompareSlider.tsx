@@ -15,6 +15,7 @@ interface CompareSliderProps {
   aspectRatio?: number;
   onExport: (type: "svg" | "eps" | "dxf") => void;
   onFiles?: (files: FileList | File[]) => void;
+  onUpgrade?: () => void;
 }
 
 export function CompareSlider({
@@ -28,6 +29,7 @@ export function CompareSlider({
   aspectRatio,
   onExport,
   onFiles,
+  onUpgrade,
 }: CompareSliderProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   if (!originalUrl) {
@@ -74,10 +76,15 @@ export function CompareSlider({
   }
 
   if (!vectorUrl) {
+    const isAwaitingQuota = status === "awaiting_quota";
     const isQueued = status === "queued";
     const progressValue = Math.max(0, Math.min(Math.round(progress ?? 0), 100));
     const visualProgress = isQueued ? Math.max(progressValue, 8) : Math.max(progressValue, 12);
-    const phaseLabel = isQueued ? "Waiting for its turn" : activePhase || "Vectorizing artwork";
+    const phaseLabel = isAwaitingQuota
+      ? "Waiting for the next free slot"
+      : isQueued
+        ? "Waiting for its turn"
+        : activePhase || "Vectorizing artwork";
 
     return (
       <div className="compare-wrap">
@@ -104,9 +111,11 @@ export function CompareSlider({
           >
             <div className="compare-pendingHeader">
               <span className="empty-eyebrow">
-                {isQueued ? "Queued" : "Vectorizing"}
+                {isAwaitingQuota ? "Awaiting quota" : isQueued ? "Queued" : "Vectorizing"}
               </span>
-              <span className="compare-pendingPercent">{progressValue}%</span>
+              <span className="compare-pendingPercent">
+                {isAwaitingQuota ? "Blocked" : `${progressValue}%`}
+              </span>
             </div>
             <div className="compare-pendingOrbital" aria-hidden="true">
               <span className="compare-pendingCore" />
@@ -117,22 +126,36 @@ export function CompareSlider({
             </div>
             <div className="compare-pendingCopy">
               <h2>
-                {isQueued ? "Your image is lined up for conversion." : "Rebuilding clean vector layers."}
+                {isAwaitingQuota
+                  ? "This file is waiting for your next available generation."
+                  : isQueued
+                    ? "Your image is lined up for conversion."
+                    : "Rebuilding clean vector layers."}
               </h2>
               <p className="muted">
-                {isQueued
-                  ? "The renderer is finishing earlier items first, then your live SVG preview will appear here automatically."
-                  : "We are quantizing colors, tracing regions, and shaping export-ready paths behind the scenes."}
+                {isAwaitingQuota
+                  ? "Upgrade for unlimited processing, or come back after the daily reset and the queue will resume from here."
+                  : isQueued
+                    ? "The renderer is finishing earlier items first, then your live SVG preview will appear here automatically."
+                    : "We are quantizing colors, tracing regions, and shaping export-ready paths behind the scenes."}
               </p>
             </div>
-            <div className="compare-pendingTrack" aria-hidden="true">
-              <span style={{ width: `${visualProgress}%` }} />
-            </div>
+            {isAwaitingQuota ? null : (
+              <div className="compare-pendingTrack" aria-hidden="true">
+                <span style={{ width: `${visualProgress}%` }} />
+              </div>
+            )}
             <div className="compare-pendingMeta">
               <span className="compare-pendingPhase">{phaseLabel}</span>
-              <span className="compare-pendingHint">
-                {isQueued ? "Auto-starts next" : "Preview updates when ready"}
-              </span>
+              {isAwaitingQuota ? (
+                <button type="button" onClick={onUpgrade}>
+                  Upgrade
+                </button>
+              ) : (
+                <span className="compare-pendingHint">
+                  {isQueued ? "Auto-starts next" : "Preview updates when ready"}
+                </span>
+              )}
             </div>
           </div>
         </div>

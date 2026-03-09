@@ -1,9 +1,14 @@
 import type { ImageQueueItem } from "@/types/vector";
 
+export function createQuotaReservationId(): string {
+  return crypto.randomUUID();
+}
+
 export function makeQueueItem(file: File): ImageQueueItem {
   const now = new Date().toISOString();
   return {
     id: crypto.randomUUID(),
+    quotaReservationId: createQuotaReservationId(),
     fileName: file.name,
     mimeType: file.type,
     size: file.size,

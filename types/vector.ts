@@ -1,5 +1,6 @@
 export type QueueStatus =
   | "queued"
+  | "awaiting_quota"
   | "processing"
   | "done"
   | "error"
@@ -63,6 +64,8 @@ export interface ConversionResult {
 
 export interface ImageQueueItem {
   id: string;
+  quotaReservationId?: string;
+  quotaBlockedReason?: "daily_limit";
   fileName: string;
   mimeType: string;
   size: number;

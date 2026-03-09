@@ -1,219 +1,25 @@
-"use client";
-
+import type { Metadata } from "next";
 import Image from "next/image";
-import { type DragEvent, useMemo, useRef, useState } from "react";
-import { PreviewPane } from "@/components/PreviewPane";
-import { QueueList } from "@/components/QueueList";
-import { ResultDetail } from "@/components/ResultDetail";
-import { SettingsPanel } from "@/components/SettingsPanel";
-import { ThemeToggle } from "@/components/ThemeToggle";
-import { Show, SignInButton, SignUpButton, UserButton } from "@clerk/nextjs";
-import { useConversionWorker } from "@/hooks/useConversionWorker";
-import { useOnlineStatus } from "@/hooks/useOnlineStatus";
-import { usePersistedPreferences } from "@/hooks/usePersistedPreferences";
-import { usePreviewUrls } from "@/hooks/usePreviewUrls";
-import { useServiceWorkerCleanup } from "@/hooks/useServiceWorkerCleanup";
-import { useTopbarHeight } from "@/hooks/useTopbarHeight";
-import { downloadAsZip, downloadString } from "@/lib/download";
-import { makeQueueItem, withUpdated } from "@/lib/queueUtils";
 import {
-  clearAllData,
-  deleteItemData,
-  putFileBlob,
-} from "@/lib/storage/indexedDb";
-import { defaultPersistedState } from "@/lib/storage/localState";
-import type { ConversionResult, PersistedAppState } from "@/types/vector";
+  PricingTable,
+  Show,
+  SignInButton,
+  SignUpButton,
+  UserButton,
+} from "@clerk/nextjs";
 import styles from "./page.module.css";
 
+export const metadata: Metadata = {
+  title: "PNG to SVG",
+  alternates: {
+    canonical: "/",
+  },
+};
+
 export default function HomePage() {
-  const [appState, setAppState] = useState<PersistedAppState>(() =>
-    defaultPersistedState(),
-  );
-  const [results, setResults] = useState<Record<string, ConversionResult>>({});
-  const [activePhase, setActivePhase] = useState<string>("Idle");
-  const [isDraggingFiles, setIsDraggingFiles] = useState(false);
-
-  const dragDepthRef = useRef(0);
-  const pageRef = useRef<HTMLElement | null>(null);
-  const topbarRef = useRef<HTMLElement | null>(null);
-
-  usePersistedPreferences(appState, setAppState, setResults);
-  useTopbarHeight(pageRef, topbarRef);
-  const isOffline = useOnlineStatus();
-  useServiceWorkerCleanup();
-
-  const selectedItem = useMemo(
-    () => appState.queue.find((item) => item.id === appState.selectedId),
-    [appState.queue, appState.selectedId],
-  );
-  const selectedResult = appState.selectedId
-    ? results[appState.selectedId]
-    : undefined;
-  const hasImages = appState.queue.length > 0;
-
-  const { originalUrl, vectorUrl } = usePreviewUrls(selectedItem, results);
-  useConversionWorker(appState, setAppState, setResults, setActivePhase);
-
-  const onFiles = async (incoming: FileList | File[]) => {
-    const files = Array.from(incoming).filter(
-      (file) => file.type === "image/png",
-    );
-    if (files.length === 0) return;
-
-    const items = files.map((file) => makeQueueItem(file));
-    for (let i = 0; i < items.length; i++) {
-      await putFileBlob(items[i].id, files[i]);
-    }
-
-    setAppState((current) => ({
-      ...current,
-      queue: [...current.queue, ...items],
-      selectedId: current.selectedId ?? items[0].id,
-    }));
-  };
-
-  const dragHasFiles = (event: DragEvent<HTMLElement>) =>
-    Array.from(event.dataTransfer.types).includes("Files");
-
-  const onDragEnter = (event: DragEvent<HTMLElement>) => {
-    if (!dragHasFiles(event)) return;
-    event.preventDefault();
-    dragDepthRef.current += 1;
-    setIsDraggingFiles(true);
-  };
-
-  const onDragOver = (event: DragEvent<HTMLElement>) => {
-    if (!dragHasFiles(event)) return;
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "copy";
-    setIsDraggingFiles(true);
-  };
-
-  const onDragLeave = (event: DragEvent<HTMLElement>) => {
-    if (!dragHasFiles(event)) return;
-    event.preventDefault();
-    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
-    if (dragDepthRef.current === 0) setIsDraggingFiles(false);
-  };
-
-  const onDrop = (event: DragEvent<HTMLElement>) => {
-    if (!dragHasFiles(event)) return;
-    event.preventDefault();
-    dragDepthRef.current = 0;
-    setIsDraggingFiles(false);
-    if (event.dataTransfer.files.length > 0) {
-      void onFiles(event.dataTransfer.files);
-    }
-  };
-
-  const onRetry = (id: string) => {
-    setAppState((current) => ({
-      ...current,
-      queue: withUpdated(current.queue, id, (item) => ({
-        ...item,
-        status: "queued",
-        progress: 0,
-        error: undefined,
-        updatedAt: new Date().toISOString(),
-      })),
-    }));
-  };
-
-  const onRegenerate = () => {
-    if (!selectedItem || selectedItem.status === "processing") return;
-    setResults((current) => {
-      const next = { ...current };
-      delete next[selectedItem.id];
-      return next;
-    });
-    setAppState((current) => ({
-      ...current,
-      queue: withUpdated(current.queue, selectedItem.id, (item) => ({
-        ...item,
-        status: "queued",
-        progress: 0,
-        error: undefined,
-        metrics: undefined,
-        updatedAt: new Date().toISOString(),
-      })),
-    }));
-  };
-
-  const onRemove = (id: string) => {
-    void deleteItemData(id);
-    setResults((current) => {
-      const next = { ...current };
-      delete next[id];
-      return next;
-    });
-    setAppState((current) => {
-      const queue = current.queue.filter((item) => item.id !== id);
-      return {
-        ...current,
-        queue,
-        selectedId: current.selectedId === id ? queue[0]?.id : current.selectedId,
-      };
-    });
-  };
-
-  const onExport = (type: "svg" | "eps" | "dxf") => {
-    if (!selectedItem || !selectedResult) return;
-    const safeName = selectedItem.fileName.replace(/\.png$/i, "");
-    if (type === "svg") {
-      downloadString(selectedResult.svg, `${safeName}.svg`, "image/svg+xml");
-    }
-    if (type === "eps") {
-      downloadString(
-        selectedResult.eps,
-        `${safeName}.eps`,
-        "application/postscript",
-      );
-    }
-    if (type === "dxf") {
-      downloadString(selectedResult.dxf, `${safeName}.dxf`, "application/dxf");
-    }
-  };
-
-  const hasActiveProcessing = appState.queue.some(
-    (item) => item.status === "processing",
-  );
-
-  const onDownloadAll = () => {
-    const entries: { path: string; content: string }[] = [];
-    for (const item of appState.queue) {
-      if (item.status !== "done") continue;
-      const result = results[item.id];
-      if (!result) continue;
-      const base = item.fileName.replace(/\.png$/i, "");
-      entries.push({ path: `${base}.svg`, content: result.svg });
-      entries.push({ path: `${base}.eps`, content: result.eps });
-      entries.push({ path: `${base}.dxf`, content: result.dxf });
-    }
-    if (entries.length === 0) return;
-    void downloadAsZip(entries, "processed-images.zip");
-  };
-
-  const onDeleteAll = () => {
-    void clearAllData();
-    setResults({});
-    setAppState((current) => ({
-      ...current,
-      queue: [],
-      selectedId: undefined,
-    }));
-  };
-
   return (
-    <main
-      ref={pageRef}
-      className={styles.page}
-      data-dragging={isDraggingFiles}
-      onDragEnter={onDragEnter}
-      onDragOver={onDragOver}
-      onDragLeave={onDragLeave}
-      onDrop={onDrop}
-    >
-      <header ref={topbarRef} className={styles.topbar}>
+    <main className={styles.page}>
+      <header className={styles.topbar}>
         <a href="/" className={styles.brandLink} aria-label="png2svg.io home">
           <Image
             src="/logo.png"
@@ -224,118 +30,163 @@ export default function HomePage() {
             priority
           />
         </a>
-        <div className={styles.topbarControls}>
-          <div className={styles.statusRow}>
-            {isOffline ? (
-              <span className={styles.statusPill} data-offline={isOffline}>
-                Offline
+        <div className={styles.topbarActions}>
+          <nav className={styles.navLinks} aria-label="Primary navigation">
+            <a href="#benefits">Benefits</a>
+            <a href="#how-it-works">How it works</a>
+            <a href="#pricing">Pricing</a>
+          </nav>
+          <span className={styles.authRow}>
+            <Show when="signed-out">
+              <SignInButton mode="modal">
+                <button type="button">Sign in</button>
+              </SignInButton>
+              <SignUpButton mode="modal">
+                <button type="button">Get free access</button>
+              </SignUpButton>
+            </Show>
+            <Show when="signed-in">
+              <a href="/app" className={styles.inlineLink}>
+                Open app
+              </a>
+              <span className={styles.avatarWrap}>
+                <UserButton
+                  appearance={{
+                    elements: {
+                      avatarBox: styles.clerkAvatar,
+                    },
+                  }}
+                />
               </span>
-            ) : null}
-            <span className={styles.statusPill}>{activePhase}</span>
-          </div>
-          <div className={styles.actionRow}>
-            <ThemeToggle
-              theme={appState.theme ?? "system"}
-              onThemeChange={(theme) =>
-                setAppState((current) => ({ ...current, theme }))
-              }
-            />
-            <span className={styles.clerkControls}>
-              <Show when="signed-out">
-                <SignInButton mode="modal" />
-                <SignUpButton mode="modal" />
-              </Show>
-              <Show when="signed-in">
-                <span className={styles.clerkAvatarWrap}>
-                  <UserButton
-                    appearance={{
-                      elements: {
-                        avatarBox: styles.clerkAvatar,
-                      },
-                    }}
-                  />
-                </span>
-              </Show>
-            </span>
-          </div>
+            </Show>
+          </span>
         </div>
       </header>
 
-      <section className={styles.workspace} data-empty={!hasImages}>
-        <div className={styles.previewColumn}>
-          <PreviewPane
-            result={selectedResult}
-            originalUrl={originalUrl}
-            vectorUrl={vectorUrl}
-            status={selectedItem?.status}
-            progress={selectedItem?.progress}
-            activePhase={
-              selectedItem?.status === "processing" ? activePhase : undefined
-            }
-            sliderPosition={appState.sliderPosition}
-            onExport={onExport}
-            onSliderPositionChange={(sliderPosition) =>
-              setAppState((current) => ({ ...current, sliderPosition }))
-            }
-            onFiles={onFiles}
-          />
-          {hasImages ? (
-            <SettingsPanel
-              value={appState.settings}
-              onChange={(settings) =>
-                setAppState((current) => ({ ...current, settings }))
-              }
-              onRegenerate={onRegenerate}
-              regenerateDisabled={
-                !selectedItem ||
-                selectedItem.status === "processing" ||
-                selectedItem.status === "queued"
-              }
-            />
-          ) : null}
+      <section className={styles.hero}>
+        <div className={styles.heroMain}>
+          <span className={styles.eyebrow}>Made for creators</span>
+          <h1>Turn your PNG designs into clean files for stickers, shirts, signs, and more.</h1>
+          <p className={styles.heroBody}>
+            PNG2SVG.IO helps creators clean up artwork fast. Upload your
+            designs, run them through the app, and download files that are easier
+            to use for cutting machines, print shops, and digital products.
+          </p>
+          <div className={styles.heroActions}>
+            <a href="/app" className={styles.primaryCta}>
+              Open the app
+            </a>
+            <a href="#pricing" className={styles.secondaryCta}>
+              View pricing
+            </a>
+          </div>
+          <ul className={styles.heroList}>
+            <li>Convert a whole batch in one go</li>
+            <li>Get results fast</li>
+            <li>Keep your artwork private</li>
+          </ul>
         </div>
-
-        {hasImages ? (
-          <aside className={styles.sidebar}>
-            <QueueList
-              items={appState.queue}
-              selectedId={appState.selectedId}
-              onSelect={(id) =>
-                setAppState((current) => ({ ...current, selectedId: id }))
-              }
-              onRetry={onRetry}
-              onRemove={onRemove}
-              onFiles={onFiles}
-              onDownloadAll={onDownloadAll}
-              onDeleteAll={onDeleteAll}
-              downloadAllDisabled={hasActiveProcessing}
-            />
-            <>
-              <ResultDetail result={selectedResult} onExport={onExport} />
-              {selectedItem?.error ? (
-                <p className={styles.error}>Error: {selectedItem.error}</p>
-              ) : null}
-            </>
-          </aside>
-        ) : null}
+        <aside className={styles.heroSide}>
+          <div className={styles.summaryCard}>
+            <span className={styles.eyebrow}>Free tier</span>
+            <h2>3 generations per day</h2>
+            <p>
+              Sign in and try the app free every day. Upgrade when you want
+              unlimited conversions for bigger product batches.
+            </p>
+          </div>
+          <div className={styles.summaryCard}>
+            <span className={styles.eyebrow}>Great for</span>
+            <p>
+              Great for logo files, shirt graphics, sticker art, laser-cut
+              designs, and digital downloads you want to sell with a cleaner finish.
+            </p>
+          </div>
+        </aside>
       </section>
-      {isDraggingFiles ? (
-        <div className={styles.dropOverlay}>Drop PNG files anywhere</div>
-      ) : null}
-      <footer className={styles.footer}>
-        <span>
-          made with <span className={styles.footerHeart}>{"<3"}</span> by{" "}
-          <a
-            href="https://github.com/bliitzkrieg"
-            target="_blank"
-            rel="noreferrer"
-            className={styles.footerLink}
-          >
-            Bliitzkrieg
-          </a>{" "}
-          (and Codex!)
-        </span>
-      </footer>
+
+      <section id="benefits" className={styles.section}>
+        <div className={styles.sectionIntro}>
+          <span className={styles.eyebrow}>Why creators like it</span>
+          <h2>Built to help you prep artwork faster.</h2>
+        </div>
+        <div className={styles.cardGrid}>
+          <article className={styles.infoCard}>
+            <h3>Handle a batch at once</h3>
+            <p>
+              Drop in multiple designs at the same time instead of repeating the
+              same steps over and over for every product file.
+            </p>
+          </article>
+          <article className={styles.infoCard}>
+            <h3>Get cleaner files quickly</h3>
+            <p>
+              Move from rough PNG artwork to cleaner cut-ready or print-ready files
+              without slowing down your product workflow.
+            </p>
+          </article>
+          <article className={styles.infoCard}>
+            <h3>Download the formats you need</h3>
+            <p>
+              Export SVG, EPS, and DXF from the same design so you can use the
+              result across different tools and fulfillment setups.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section id="how-it-works" className={styles.section}>
+        <div className={styles.sectionIntro}>
+          <span className={styles.eyebrow}>How it works</span>
+          <h2>Simple enough to fit into your normal creative workflow.</h2>
+        </div>
+        <div className={styles.stepGrid}>
+          <article className={styles.stepCard}>
+            <strong>01</strong>
+            <h3>Add your artwork</h3>
+            <p>Upload one design or a full group of PNGs from your project folder.</p>
+          </article>
+          <article className={styles.stepCard}>
+            <strong>02</strong>
+            <h3>Fine-tune the look</h3>
+            <p>Adjust the result until the shapes look right for your product.</p>
+          </article>
+          <article className={styles.stepCard}>
+            <strong>03</strong>
+            <h3>Download and use it</h3>
+            <p>Save the finished file and move on to your mockup, product setup, or production step.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="pricing" className={styles.section}>
+        <div className={styles.sectionIntro}>
+          <span className={styles.eyebrow}>Pricing</span>
+          <h2>Start free, then upgrade when you need more volume.</h2>
+          <p className={styles.sectionBody}>
+            Try it with 3 free generations each day. Upgrade for unlimited
+            conversions when you are processing more artwork regularly.
+          </p>
+        </div>
+        <div className={styles.pricingWrap}>
+          <PricingTable for="user" newSubscriptionRedirectUrl="/app" />
+        </div>
+      </section>
+
+      <section className={styles.finalCta}>
+        <div>
+          <span className={styles.eyebrow}>Ready to start</span>
+          <h2>Open the app and turn your next design into a cleaner sellable file.</h2>
+        </div>
+        <div className={styles.heroActions}>
+          <a href="/app" className={styles.primaryCta}>
+            Launch app
+          </a>
+          <a href="#pricing" className={styles.secondaryCta}>
+            Compare plans
+          </a>
+        </div>
+      </section>
     </main>
   );
 }

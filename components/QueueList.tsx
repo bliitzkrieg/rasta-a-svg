@@ -16,11 +16,13 @@ interface QueueListProps {
   onFiles: (files: FileList | File[]) => void;
   onDownloadAll: () => void;
   onDeleteAll: () => void;
+  onUpgrade: () => void;
   downloadAllDisabled: boolean;
 }
 
 function statusText(item: ImageQueueItem): string {
   if (item.status === "processing") return `${item.progress}%`;
+  if (item.status === "awaiting_quota") return "Waiting";
   if (item.status === "error") return "Failed";
   if (item.status === "done") return "Done";
   if (item.status === "canceled") return "Canceled";
@@ -49,6 +51,7 @@ export function QueueList({
   onFiles,
   onDownloadAll,
   onDeleteAll,
+  onUpgrade,
   downloadAllDisabled,
 }: QueueListProps) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -83,6 +86,7 @@ export function QueueList({
           hidden
           onChange={(event) => {
             if (event.target.files) onFiles(event.target.files);
+            event.target.value = "";
           }}
         />
       </div>
@@ -119,6 +123,17 @@ export function QueueList({
                   }}
                 >
                   Retry
+                </button>
+              ) : null}
+              {item.status === "awaiting_quota" ? (
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onUpgrade();
+                  }}
+                >
+                  Upgrade
                 </button>
               ) : null}
               <button
