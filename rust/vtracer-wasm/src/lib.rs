@@ -30,6 +30,8 @@ struct TraceOptions {
     maxIterations: usize,
     #[serde(default = "default_path_precision")]
     pathPrecision: u32,
+    #[serde(default = "default_polygon_max_area")]
+    polygonMaxArea: usize,
     spliceThreshold: f64,
     mode: String,
 }
@@ -120,6 +122,29 @@ fn default_max_iterations() -> usize {
 
 fn default_path_precision() -> u32 {
     8
+}
+
+/// When > 0 and the requested mode is "spline", clusters at or below this
+/// pixel area are traced with Polygon simplification instead of Spline.
+/// Fitted splines bow outward past the true pixel boundary on small features
+/// (halftone dots render ~19% too dark), while pixel-corner polygons trace
+/// them tightly. Large smooth curves keep the spline look.
+fn default_polygon_max_area() -> usize {
+    0
+}
+
+/// Pick the path simplification mode for one cluster. Small clusters get
+/// Polygon even when the user asked for Spline, to avoid spline overshoot
+/// on tiny features; everything else uses the requested mode unchanged.
+fn cluster_simplify_mode(area: usize, options: &TraceOptions) -> PathSimplifyMode {
+    if options.mode == "spline"
+        && options.polygonMaxArea > 0
+        && area <= options.polygonMaxArea
+    {
+        PathSimplifyMode::Polygon
+    } else {
+        to_simplify_mode(&options.mode)
+    }
 }
 
 fn build_color_image(width: u32, height: u32, pixels: &[u8]) -> ColorImage {
@@ -263,7 +288,7 @@ fn build_color_output(
         let compound = cluster.to_compound_path(
             &view,
             false,
-            to_simplify_mode(&options.mode),
+            cluster_simplify_mode(cluster.area(), options),
             deg_to_rad(options.cornerThreshold),
             options.lengthThreshold,
             options.maxIterations,
@@ -322,7 +347,7 @@ fn build_binary_output(
         }
 
         let compound = cluster.to_compound_path(
-            to_simplify_mode(&options.mode),
+            cluster_simplify_mode(cluster.size(), options),
             deg_to_rad(options.cornerThreshold),
             options.lengthThreshold,
             options.maxIterations,

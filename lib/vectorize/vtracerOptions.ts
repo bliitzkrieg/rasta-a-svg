@@ -17,6 +17,7 @@ export interface VTracerOptions {
   pathPrecision: number;
   spliceThreshold: number;
   mode: VTracerMode;
+  polygonMaxArea: number;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -40,5 +41,6 @@ export function toVTracerOptions(
     pathPrecision: clamp(Math.round(settings.pathPrecision), 0, 16),
     spliceThreshold: clamp(Math.round(settings.spliceThreshold), 0, 180),
     mode: settings.mode,
+    polygonMaxArea: clamp(Math.round(settings.polygonMaxArea), 0, 65536),
   };
 }

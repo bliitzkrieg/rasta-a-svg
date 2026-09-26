@@ -16,6 +16,7 @@ describe("toVTracerOptions", () => {
       pathPrecision: 3,
       spliceThreshold: 30,
       mode: "spline",
+      polygonMaxArea: 1600,
     });
   });
 
@@ -46,6 +47,7 @@ describe("toVTracerOptions", () => {
         lengthThreshold: 99,
         spliceThreshold: 999,
         pathPrecision: 99,
+        polygonMaxArea: 999999,
       }),
     ).toEqual({
       ...toVTracerOptions(DEFAULT_SETTINGS),
@@ -56,6 +58,7 @@ describe("toVTracerOptions", () => {
       lengthThreshold: 40,
       spliceThreshold: 180,
       pathPrecision: 16,
+      polygonMaxArea: 65536,
     });
   });
 });

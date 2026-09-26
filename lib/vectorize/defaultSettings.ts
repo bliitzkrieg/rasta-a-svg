@@ -11,4 +11,5 @@ export const DEFAULT_SETTINGS: ConversionSettings = {
   lengthThreshold: 24,
   spliceThreshold: 30,
   pathPrecision: 3,
+  polygonMaxArea: 1600,
 };
