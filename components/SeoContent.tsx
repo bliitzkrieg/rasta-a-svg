@@ -1,3 +1,4 @@
+import Link from "next/link";
 import styles from "./SeoContent.module.css";
 
 const faqs = [
@@ -33,6 +34,45 @@ const faqs = [
   },
 ];
 
+const resources = [
+  {
+    href: "/png-to-eps",
+    title: "PNG to EPS",
+    description:
+      "Convert PNG images to EPS vectors for print shops and design workflows.",
+  },
+  {
+    href: "/png-to-dxf",
+    title: "PNG to DXF",
+    description:
+      "Convert PNG images to DXF vectors for CNC, laser cutters, and CAD software.",
+  },
+  {
+    href: "/guides/how-to-convert-png-to-svg",
+    title: "How to convert PNG to SVG",
+    description:
+      "A step-by-step guide to getting clean vector results from any PNG.",
+  },
+  {
+    href: "/guides/png-vs-svg",
+    title: "PNG vs SVG",
+    description:
+      "When to use raster images and when vectors are the better choice.",
+  },
+  {
+    href: "/guides/what-is-vectorization",
+    title: "What is vectorization",
+    description:
+      "How tracing turns pixels into scalable paths, and what affects quality.",
+  },
+  {
+    href: "/faq",
+    title: "FAQ",
+    description:
+      "Answers about formats, privacy, cutting machines, and export options.",
+  },
+];
+
 const faqJsonLd = {
   "@context": "https://schema.org",
   "@type": "FAQPage",
@@ -48,13 +88,14 @@ const faqJsonLd = {
 
 export function SeoContent() {
   return (
-    <section className={styles.seo} aria-label="About PNG2SVG.IO">
-      <div className={styles.howItWorks}>
-        <h2 className={styles.heading}>How it works</h2>
-        <p className={styles.lede}>
-          PNG2SVG.IO turns your PNG images into crisp vector files without
-          uploading anything. Everything happens in your browser.
-        </p>
+    <>
+      <section className={styles.seo} aria-label="About PNG2SVG.IO">
+        <div className={styles.howItWorks}>
+          <h2 className={styles.heading}>How it works</h2>
+          <p className={styles.lede}>
+            PNG2SVG.IO turns your PNG images into crisp vector files without
+            uploading anything. Everything happens in your browser.
+          </p>
         <ol className={styles.steps}>
           <li className={styles.step}>
             <span className={styles.stepNumber} aria-hidden="true">
@@ -105,10 +146,37 @@ export function SeoContent() {
         </dl>
       </div>
 
+      <div className={styles.resources}>
+        <h2 className={styles.heading}>Converters and guides</h2>
+        <p className={styles.lede}>
+          More ways to turn images into vectors, plus guides on getting the
+          best results.
+        </p>
+        <div className={styles.resourceGrid}>
+          {resources.map((resource) => (
+            <Link
+              key={resource.href}
+              href={resource.href}
+              className={styles.resourceCard}
+            >
+              <h3>{resource.title}</h3>
+              <p>{resource.description}</p>
+            </Link>
+          ))}
+        </div>
+      </div>
+
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
       />
-    </section>
+      </section>
+      <footer className={styles.siteFooter}>
+        <p>
+          PNG2SVG.IO: free PNG to SVG converter. Files never leave your
+          browser.
+        </p>
+      </footer>
+    </>
   );
 }
