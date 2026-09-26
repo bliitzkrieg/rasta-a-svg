@@ -1,6 +1,7 @@
 import { medianFilter5x5 } from "./medianFilter";
 import { adaptiveEdgeRestore } from "./unsharpMask";
 import { posterizeImageData } from "./posterize";
+import { compositeAlphaOverWhite } from "./alphaComposite";
 
 export interface DecodedImage {
   width: number;
@@ -38,9 +39,14 @@ export async function decodeBlobToImageData(blob: Blob): Promise<DecodedImage> {
   // color continua (gradients, soft blends) trace as discrete bands
   // instead of chaining into one average-color cluster (parity harness:
   // +0.0971 to 0.9320, no per-image regressions; gradient 0.036 to 1.0).
+  // Then partial-alpha pixels are composited over white when translucency
+  // is a significant feature of the image (parity harness: +0.0492 to
+  // 0.9812, no per-image regressions; transparency 0.4994 to 0.9916),
+  // since the tracer has no alpha channel and would otherwise snap them.
   const denoised = medianFilter5x5(raw, canvas.width, canvas.height);
   const restored = adaptiveEdgeRestore(raw, denoised, canvas.width, canvas.height);
-  const data = posterizeImageData(restored, canvas.width, canvas.height);
+  const posterized = posterizeImageData(restored, canvas.width, canvas.height);
+  const data = compositeAlphaOverWhite(posterized, canvas.width, canvas.height);
   return {
     width: canvas.width,
     height: canvas.height,
