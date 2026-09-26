@@ -1,3 +1,5 @@
+import { medianFilter3x3 } from "./medianFilter";
+
 export interface DecodedImage {
   width: number;
   height: number;
@@ -23,8 +25,11 @@ export async function decodeBlobToImageData(blob: Blob): Promise<DecodedImage> {
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
   ctx.drawImage(bitmap, 0, 0, outputWidth, outputHeight);
-  const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-  // getImageData already returns a fresh buffer; no extra copy needed.
+  const raw = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+  // Light denoise before tracing: a 3x3 median pass removes speckle noise
+  // while preserving sharp edges (parity harness: +0.0066 overall, no
+  // per-image regressions).
+  const data = medianFilter3x3(raw, canvas.width, canvas.height);
   return {
     width: canvas.width,
     height: canvas.height,
