@@ -159,7 +159,7 @@ export function SettingsPanel({
             <input
               type="range"
               min={3.5}
-              max={10}
+              max={40}
               step={0.5}
               value={value.lengthThreshold}
               onChange={(event) =>

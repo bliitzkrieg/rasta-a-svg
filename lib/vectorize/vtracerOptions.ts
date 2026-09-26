@@ -34,7 +34,7 @@ export function toVTracerOptions(
     layerDifference: clamp(Math.round(settings.layerDifference), 0, 255),
     cornerThreshold: clamp(Math.round(settings.cornerThreshold), 0, 180),
     lengthThreshold: Number(
-      clamp(settings.lengthThreshold, 3.5, 10).toFixed(2),
+      clamp(settings.lengthThreshold, 3.5, 40).toFixed(2),
     ),
     maxIterations: 10,
     pathPrecision: clamp(Math.round(settings.pathPrecision), 0, 16),
