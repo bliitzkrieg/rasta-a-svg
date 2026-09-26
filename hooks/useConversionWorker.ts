@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { decodeBlobToImageData } from "@/lib/image/decode";
 import { getFileBlob, putResult } from "@/lib/storage/indexedDb";
 import { withUpdated } from "@/lib/queueUtils";
+import { trackEvent } from "@/lib/analytics";
 import type {
   ConversionResult,
   ConvertJobError,
@@ -30,6 +31,10 @@ export function useConversionWorker(
 ): void {
   const workerRef = useRef<Worker | null>(null);
   const processingRef = useRef<string | null>(null);
+  // The worker message handler is registered once, so it reads settings
+  // through a ref to avoid capturing stale values.
+  const settingsRef = useRef(state.settings);
+  settingsRef.current = state.settings;
 
   useEffect(() => {
     const worker = new Worker(
@@ -58,6 +63,13 @@ export function useConversionWorker(
         const { id, result } = message.payload;
         void putResult(id, result);
         setResults((current) => ({ ...current, [id]: result }));
+        trackEvent("conversion_complete", {
+          mode: settingsRef.current.mode,
+          clustering_mode: settingsRef.current.clusteringMode,
+          layers: result.layers.length,
+          paths: result.metrics.pathCount,
+          nodes: result.metrics.nodeCount,
+        });
         setState((current) => ({
           ...current,
           queue: withUpdated(current.queue, id, (item) => ({

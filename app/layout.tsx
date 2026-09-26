@@ -88,8 +88,8 @@ export const metadata: Metadata = {
     images: [
       {
         url: "/logo.png",
-        width: 1200,
-        height: 630,
+        width: 1325,
+        height: 340,
         alt: "PNG2SVG.IO logo",
       },
     ],

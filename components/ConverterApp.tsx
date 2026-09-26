@@ -15,6 +15,7 @@ import { usePreviewUrls } from "@/hooks/usePreviewUrls";
 import { useServiceWorkerCleanup } from "@/hooks/useServiceWorkerCleanup";
 import { useTopbarHeight } from "@/hooks/useTopbarHeight";
 import { downloadAsZip, downloadString } from "@/lib/download";
+import { trackEvent } from "@/lib/analytics";
 import { makeQueueItem, withUpdated } from "@/lib/queueUtils";
 import {
   clearAllData,
@@ -79,6 +80,7 @@ export default function ConverterApp() {
     for (let i = 0; i < items.length; i++) {
       await putFileBlob(items[i].id, files[i]);
     }
+    trackEvent("file_upload", { file_count: files.length });
 
     setAppState((current) => ({
       ...current,
@@ -174,6 +176,7 @@ export default function ConverterApp() {
   const onExport = (type: "svg" | "eps" | "dxf") => {
     if (!selectedItem || !selectedResult) return;
     const safeName = selectedItem.fileName.replace(/\.png$/i, "");
+    trackEvent("file_download", { format: type });
     if (type === "svg") {
       downloadString(selectedResult.svg, `${safeName}.svg`, "image/svg+xml");
     }
@@ -205,6 +208,7 @@ export default function ConverterApp() {
       entries.push({ path: `${base}.dxf`, content: result.dxf });
     }
     if (entries.length === 0) return;
+    trackEvent("download_all", { file_count: entries.length / 3 });
     void downloadAsZip(entries, "processed-images.zip");
   };
 
