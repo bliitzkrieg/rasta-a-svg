@@ -346,20 +346,6 @@ export default function ConverterApp() {
       {isDraggingFiles ? (
         <div className={styles.dropOverlay}>Drop PNG files anywhere</div>
       ) : null}
-      <footer className={styles.footer}>
-        <span>
-          made with <span className={styles.footerHeart}>{"<3"}</span> by{" "}
-          <a
-            href="https://github.com/bliitzkrieg"
-            target="_blank"
-            rel="noreferrer"
-            className={styles.footerLink}
-          >
-            Bliitzkrieg
-          </a>{" "}
-          (and Codex!)
-        </span>
-      </footer>
     </main>
   );
 }
