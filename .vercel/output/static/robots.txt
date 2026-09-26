@@ -1,4 +1,0 @@
-User-Agent: *
-Allow: /
-
-Sitemap: https://png2svg.io/sitemap.xml

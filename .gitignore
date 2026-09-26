@@ -10,3 +10,5 @@ rust/**/target/
 
 # clerk configuration (can include secrets)
 /.clerk/
+
+.vercel/
