@@ -160,3 +160,35 @@
     justify-content: flex-start;
   }
 }
+
+.footer {
+  width: 100%;
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 2.5rem;
+  border-top: 1px solid var(--line);
+}
+
+.footerNav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.footerNav a {
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+  text-decoration: none;
+}
+
+.footerNav a:hover {
+  color: var(--brand-primary);
+  text-decoration: underline;
+}
+
+.footerNote {
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+  margin: 0;
+}

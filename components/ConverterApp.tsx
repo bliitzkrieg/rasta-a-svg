@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Logo } from "./Logo";
 import { type DragEvent, useMemo, useRef, useState } from "react";
 import { PreviewPane } from "@/components/PreviewPane";
@@ -222,9 +223,10 @@ export default function ConverterApp() {
   };
 
   return (
-    <main
-      ref={pageRef}
-      className={styles.page}
+    <>
+      <main
+        ref={pageRef}
+        className={styles.page}
       data-dragging={isDraggingFiles}
       onDragEnter={onDragEnter}
       onDragOver={onDragOver}
@@ -321,6 +323,25 @@ export default function ConverterApp() {
       {isDraggingFiles ? (
         <div className={styles.dropOverlay}>Drop PNG files anywhere</div>
       ) : null}
-    </main>
+      </main>
+      <footer className={styles.footer}>
+        <nav aria-label="Resources" className={styles.footerNav}>
+          <Link href="/png-to-eps">PNG to EPS</Link>
+          <Link href="/png-to-dxf">PNG to DXF</Link>
+          <Link href="/faq">FAQ</Link>
+          <Link href="/guides/how-to-convert-png-to-svg">
+            How to convert PNG to SVG
+          </Link>
+          <Link href="/guides/png-vs-svg">PNG vs SVG</Link>
+          <Link href="/guides/what-is-vectorization">
+            What is vectorization
+          </Link>
+        </nav>
+        <p className={styles.footerNote}>
+          PNG2SVG.IO: free PNG to SVG converter. Files never leave your
+          browser.
+        </p>
+      </footer>
+    </>
   );
 }

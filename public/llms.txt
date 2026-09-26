@@ -1,0 +1,34 @@
+# PNG2SVG.IO
+
+Free online PNG to SVG converter. Vectorizes PNG images into clean layered SVG, EPS, and DXF files entirely in the browser. No uploads, no sign-up, no watermarks.
+
+## What it does
+
+- Converts PNG (raster) images to SVG (vector) using client-side WebAssembly tracing
+- Exports SVG, EPS, and DXF from every conversion, with one vector layer per color
+- Adjustable settings: color count, detail, path smoothing, and corner rounding
+- Batch queue: convert several PNGs in one session and download all as a ZIP
+
+## Who it is for
+
+- Crafters using Cricut Design Space or Silhouette Studio
+- Laser cutter and CNC operators who need DXF files
+- Designers and print shops who need EPS vectors
+- Anyone who needs a logo or illustration scaled up without quality loss
+
+## Key facts
+
+- 100% client-side: PNG files never leave the user's device, nothing is uploaded
+- Free with no account required and no watermarks on output
+- SVG output uses clean layered paths, one layer per quantized color
+- Large images are scaled so the longest side is 1000 pixels before tracing; files up to 25 MB are accepted
+
+## Pages
+
+- Converter: https://png2svg.io/
+- PNG to EPS converter: https://png2svg.io/png-to-eps
+- PNG to DXF converter: https://png2svg.io/png-to-dxf
+- FAQ: https://png2svg.io/faq
+- Guide: How to convert PNG to SVG: https://png2svg.io/guides/how-to-convert-png-to-svg
+- Guide: PNG vs SVG: https://png2svg.io/guides/png-vs-svg
+- Guide: What is vectorization: https://png2svg.io/guides/what-is-vectorization

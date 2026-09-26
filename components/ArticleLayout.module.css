@@ -1,0 +1,166 @@
+.article {
+  width: 100%;
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem 4rem;
+  color: var(--ink);
+}
+
+.crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+  margin-bottom: 1.5rem;
+}
+
+.crumb a {
+  color: var(--brand-primary);
+  text-decoration: none;
+}
+
+.crumb a:hover {
+  text-decoration: underline;
+}
+
+.sep {
+  margin: 0 0.5rem;
+  color: var(--line);
+}
+
+.title {
+  font-size: var(--text-3xl);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin: 0 0 1rem;
+  line-height: 1.2;
+}
+
+.lede {
+  font-size: var(--text-lg);
+  color: var(--ink-muted);
+  line-height: 1.65;
+  margin: 0 0 2.5rem;
+}
+
+.prose h2 {
+  font-size: var(--text-2xl);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  margin: 2.5rem 0 0.75rem;
+}
+
+.prose h3 {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  margin: 1.75rem 0 0.5rem;
+}
+
+.prose p {
+  font-size: var(--text-base);
+  line-height: 1.7;
+  color: var(--ink-muted);
+  margin: 0 0 1rem;
+}
+
+.prose p strong,
+.prose li strong {
+  color: var(--ink);
+}
+
+.prose ul,
+.prose ol {
+  margin: 0 0 1.25rem;
+  padding-left: 1.5rem;
+  color: var(--ink-muted);
+  line-height: 1.7;
+}
+
+.prose li {
+  margin-bottom: 0.5rem;
+}
+
+.prose a {
+  color: var(--brand-primary);
+  text-decoration: none;
+}
+
+.prose a:hover {
+  text-decoration: underline;
+}
+
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 1.5rem;
+  font-size: var(--text-sm);
+}
+
+.prose th,
+.prose td {
+  text-align: left;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.prose th {
+  background: var(--panel);
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.prose td {
+  color: var(--ink-muted);
+  line-height: 1.6;
+}
+
+.cta {
+  margin-top: 3rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 2rem;
+  text-align: center;
+  box-shadow: var(--shadow-sm);
+}
+
+.ctaTitle {
+  font-size: var(--text-2xl);
+  font-weight: 800;
+  margin: 0 0 0.5rem;
+}
+
+.ctaText {
+  color: var(--ink-muted);
+  margin: 0 0 1.5rem;
+  line-height: 1.6;
+}
+
+.ctaButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  padding: 0 1.75rem;
+  border-radius: 999px;
+  background: var(--brand-primary);
+  color: #fff;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.ctaButton:hover {
+  filter: brightness(1.08);
+}
+
+@media (max-width: 720px) {
+  .article {
+    padding: 1.75rem 1rem 3rem;
+  }
+
+  .title {
+    font-size: var(--text-2xl);
+  }
+}
