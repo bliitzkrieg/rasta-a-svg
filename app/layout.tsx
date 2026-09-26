@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Manrope } from "next/font/google";
 import Script from "next/script";
-import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 
 const manrope = Manrope({
@@ -135,7 +134,7 @@ export default function RootLayout({
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(webAppJsonLd) }}
         />
-        <ClerkProvider>{children}</ClerkProvider>
+        {children}
       </body>
     </html>
   );

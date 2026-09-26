@@ -7,7 +7,6 @@ import { QueueList } from "@/components/QueueList";
 import { ResultDetail } from "@/components/ResultDetail";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { Show, SignInButton, SignUpButton, UserButton } from "@clerk/nextjs";
 import { useConversionWorker } from "@/hooks/useConversionWorker";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { usePersistedPreferences } from "@/hooks/usePersistedPreferences";
@@ -252,23 +251,6 @@ export default function ConverterApp() {
                 setAppState((current) => ({ ...current, theme }))
               }
             />
-            <span className={styles.clerkControls}>
-              <Show when="signed-out">
-                <SignInButton mode="modal" />
-                <SignUpButton mode="modal" />
-              </Show>
-              <Show when="signed-in">
-                <span className={styles.clerkAvatarWrap}>
-                  <UserButton
-                    appearance={{
-                      elements: {
-                        avatarBox: styles.clerkAvatar,
-                      },
-                    }}
-                  />
-                </span>
-              </Show>
-            </span>
           </div>
         </div>
       </header>
