@@ -8,7 +8,7 @@ describe("toVTracerOptions", () => {
       clusteringMode: "color",
       hierarchical: "stacked",
       colorPrecision: 8,
-      filterSpeckle: 4,
+      filterSpeckle: 1,
       layerDifference: 1,
       cornerThreshold: 60,
       lengthThreshold: 24,
