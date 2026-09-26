@@ -102,6 +102,9 @@ export const metadata: Metadata = {
     images: ["/logo.png"],
   },
   category: "design tools",
+  other: {
+    "google-adsense-account": "ca-pub-1821039974714849",
+  },
 };
 
 export const viewport: Viewport = {
