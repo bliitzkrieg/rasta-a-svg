@@ -4,7 +4,7 @@ export const DEFAULT_SETTINGS: ConversionSettings = {
   clusteringMode: "color",
   hierarchical: "stacked",
   filterSpeckle: 4,
-  colorPrecision: 6,
+  colorPrecision: 8,
   layerDifference: 16,
   mode: "spline",
   cornerThreshold: 60,

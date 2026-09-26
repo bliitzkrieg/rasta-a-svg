@@ -89,6 +89,27 @@ function logoPixels(): { width: number; height: number; pixels: Uint8Array } {
   return { width, height, pixels };
 }
 
+/** Soft radial pink gradient on cream: mimics illustration-style shading. */
+function softPinkBlob(): { width: number; height: number; pixels: Uint8Array } {
+  const width = 200;
+  const height = 200;
+  const pixels = new Uint8Array(width * height * 4);
+  const cream = [246, 241, 222];
+  const pink = [242, 183, 171];
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const dist = Math.hypot(x - 100, y - 100) / 60;
+      const t = dist >= 1 ? 1 : dist * dist * (3 - 2 * dist);
+      const i = (y * width + x) * 4;
+      pixels[i] = Math.round(pink[0] + (cream[0] - pink[0]) * t);
+      pixels[i + 1] = Math.round(pink[1] + (cream[1] - pink[1]) * t);
+      pixels[i + 2] = Math.round(pink[2] + (cream[2] - pink[2]) * t);
+      pixels[i + 3] = 255;
+    }
+  }
+  return { width, height, pixels };
+}
+
 describe("vtracer WASM pipeline", () => {
   it("traces the default settings into clean color layers", () => {
     const { width, height, pixels } = logoPixels();
@@ -116,6 +137,23 @@ describe("vtracer WASM pipeline", () => {
     );
     expect(spline.layers.length).toBe(pixel.layers.length);
     expect(spline.svg.length).toBeLessThan(pixel.svg.length);
+  });
+
+  it("preserves soft gradient detail instead of washing it into one layer", () => {
+    // Mimics illustration shading (e.g. a pink inner ear on cream): a soft
+    // radial gradient. Coarse color clustering chains the whole gradient
+    // into a single washed-out layer; exact clustering keeps pink bands.
+    const { width, height, pixels } = softPinkBlob();
+    const out = trace(width, height, pixels, defaultOptions());
+    const pinkness = (hex: string): number => {
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      return r - (g + b) / 2;
+    };
+    const pinkLayers = out.layers.filter((l) => pinkness(l.color) > 30);
+    expect(out.layers.length).toBeGreaterThan(1);
+    expect(pinkLayers.length).toBeGreaterThan(0);
   });
 
   it("keys out a transparent background and keeps the artwork", () => {

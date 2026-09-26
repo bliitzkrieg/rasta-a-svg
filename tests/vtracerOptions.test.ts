@@ -7,7 +7,7 @@ describe("toVTracerOptions", () => {
     expect(toVTracerOptions(DEFAULT_SETTINGS)).toEqual({
       clusteringMode: "color",
       hierarchical: "stacked",
-      colorPrecision: 6,
+      colorPrecision: 8,
       filterSpeckle: 4,
       layerDifference: 16,
       cornerThreshold: 60,
