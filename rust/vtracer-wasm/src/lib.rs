@@ -128,6 +128,19 @@ fn build_color_image(width: u32, height: u32, pixels: &[u8]) -> ColorImage {
     image
 }
 
+/// Pixels below half opacity are visual background noise; pixels at or above
+/// it are solid foreground. Snapping to one side or the other keeps soft
+/// alpha halos from being traced as solid color, which would bloat shapes.
+fn flatten_alpha(image: &mut ColorImage) {
+    for rgba in image.pixels.chunks_exact_mut(4) {
+        if rgba[3] < 128 {
+            rgba[3] = 0;
+        } else {
+            rgba[3] = 255;
+        }
+    }
+}
+
 fn trace_color_image(
     width: u32,
     height: u32,
@@ -135,6 +148,12 @@ fn trace_color_image(
     options: &TraceOptions,
 ) -> Result<TraceOutput, JsValue> {
     let mut image = build_color_image(width, height, pixels);
+    // The clustering below only looks at RGB, so a semi-transparent halo
+    // (very common on PNG logos) would be treated as fully opaque and
+    // fatten every shape. Flatten transparency first: pixels that are at
+    // least half opaque become solid, the rest become fully transparent and
+    // are keyed out as background below.
+    flatten_alpha(&mut image);
     let use_keying = should_key_image(&image);
     let key_color = if use_keying {
         let color = find_unused_opaque_color(&image);
@@ -160,8 +179,9 @@ fn trace_binary_image(
     pixels: &[u8],
     options: &TraceOptions,
 ) -> TraceOutput {
-    let image = build_color_image(width, height, pixels);
-    let binary_image = image.to_binary_image(|pixel| pixel.r < 128);
+    let mut image = build_color_image(width, height, pixels);
+    flatten_alpha(&mut image);
+    let binary_image = image.to_binary_image(|pixel| pixel.a >= 128 && pixel.r < 128);
     let clusters = binary_image.to_clusters(false);
     build_binary_output(width, height, &clusters, options)
 }
@@ -462,10 +482,14 @@ fn compound_to_trace_path(
     svg_path_data: String,
     svg_offset: PointF64,
 ) -> TracePath {
+    // The compound paths are already in absolute image coordinates (see
+    // visioncortex Cluster::to_compound_path), so the points must NOT be
+    // shifted by svg_offset again. That offset only belongs on the SVG
+    // transform, which is stored separately below.
     let mut contours = compound
         .paths
         .iter()
-        .map(|element| sample_compound_element(element, svg_offset))
+        .map(|element| sample_compound_element(element, PointF64::default()))
         .filter(|points| points.len() >= 3)
         .collect::<Vec<_>>();
 

@@ -19,10 +19,19 @@ const wasmBytes = (() => {
 
 initSync({ module: wasmBytes });
 
+interface TracePoint {
+  x: number;
+  y: number;
+}
+
+interface TracePath {
+  points: TracePoint[];
+}
+
 interface TraceLayer {
   name: string;
   color: string;
-  paths: unknown[];
+  paths: TracePath[];
 }
 
 interface TraceOutput {
@@ -139,5 +148,83 @@ describe("vtracer WASM pipeline", () => {
     );
     // The worker converts this into a friendly "nothing to trace" error.
     expect(out.layers.length).toBe(0);
+  });
+
+  it("flattens a semi-transparent halo instead of tracing it as solid", () => {
+    // 60x60 opaque black square with a 10px semi-transparent black halo,
+    // like the soft edge of a PNG logo. The halo must not bloat the shape.
+    const width = 200;
+    const height = 200;
+    const pixels = new Uint8Array(width * height * 4);
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const i = (y * width + x) * 4;
+        const dx = Math.max(70 - x, 0, x - 129);
+        const dy = Math.max(70 - y, 0, y - 129);
+        const d = Math.hypot(dx, dy);
+        if (d <= 0) {
+          pixels[i + 3] = 255;
+        } else if (d < 10) {
+          pixels[i + 3] = Math.round(255 * (1 - d / 10));
+        } else {
+          pixels[i] = 255;
+          pixels[i + 1] = 255;
+          pixels[i + 2] = 255;
+          pixels[i + 3] = 0;
+        }
+      }
+    }
+    const out = trace(width, height, pixels, defaultOptions());
+    const black = out.layers.filter((l) => l.color === "#000000");
+    expect(black.length).toBe(1);
+    let area = 0;
+    for (const path of black[0].paths) {
+      const pts = path.points;
+      if (pts.length < 3) continue;
+      let a = 0;
+      for (let k = 0; k < pts.length; k += 1) {
+        const p = pts[k];
+        const q = pts[(k + 1) % pts.length];
+        a += p.x * q.y - q.x * p.y;
+      }
+      area += Math.abs(a) / 2;
+    }
+    // Opaque core is 3600 px; the >=50% opaque part of the halo adds ~1300.
+    // Without the fix the full halo traced as solid black and the area blew
+    // out past 6200.
+    expect(area).toBeLessThan(5200);
+  });
+
+  it("reports path points in absolute image coordinates", () => {
+    // 100x100 hard square at (50,50). The points must line up with the
+    // pixels, not be shifted by the SVG translate offset a second time.
+    const width = 200;
+    const height = 200;
+    const pixels = new Uint8Array(width * height * 4);
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const i = (y * width + x) * 4;
+        const inside = x >= 50 && x < 150 && y >= 50 && y < 150;
+        const v = inside ? 0 : 255;
+        pixels[i] = v;
+        pixels[i + 1] = v;
+        pixels[i + 2] = v;
+        pixels[i + 3] = 255;
+      }
+    }
+    const out = trace(width, height, pixels, defaultOptions());
+    const black = out.layers.find((l) => l.color === "#000000");
+    expect(black).toBeDefined();
+    let minX = Infinity;
+    let maxX = -Infinity;
+    for (const path of black!.paths) {
+      const pts = path.points;
+      for (const pt of pts) {
+        if (pt.x < minX) minX = pt.x;
+        if (pt.x > maxX) maxX = pt.x;
+      }
+    }
+    expect(minX).toBeGreaterThanOrEqual(49);
+    expect(maxX).toBeLessThanOrEqual(151);
   });
 });
