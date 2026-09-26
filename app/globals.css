@@ -460,14 +460,14 @@ button.danger:hover {
 }
 
 .empty-stateBeam {
-  inset: -10% 30%;
+  inset: -10% 0;
   background: linear-gradient(
     180deg,
     transparent 0%,
     color-mix(in srgb, #ffffff 40%, transparent) 48%,
     transparent 100%
   );
-  opacity: 0.35;
+  opacity: 0.25;
   transform: translateY(-100%);
   animation: emptyStateBeam 4.5s ease-in-out infinite;
 }
