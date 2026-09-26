@@ -89,4 +89,36 @@ describe("adaptiveEdgeRestore", () => {
     const out = adaptiveEdgeRestore(raw, med, width, height);
     expect(out).not.toBe(med);
   });
+
+  it("uses the gentler 20% mask for heavily noisy input", () => {
+    const width = 32;
+    const height = 8;
+    const raw = new Uint8ClampedArray(width * height * 4);
+    const med = new Uint8ClampedArray(width * height * 4);
+    // noiseFraction is 1.0 here, well above the 0.05 heavy-noise gate.
+    for (let i = 0; i < raw.length; i += 4) {
+      raw[i] = 100;
+      raw[i + 1] = 100;
+      raw[i + 2] = 100;
+      raw[i + 3] = 255;
+      med[i] = 112;
+      med[i + 1] = 112;
+      med[i + 2] = 112;
+      med[i + 3] = 255;
+    }
+    for (let y = 0; y < height; y += 1) {
+      for (let x = width / 2; x < width; x += 1) {
+        const i = (y * width + x) * 4;
+        med[i] = 200;
+        med[i + 1] = 200;
+        med[i + 2] = 200;
+      }
+    }
+    const out = adaptiveEdgeRestore(raw, med, width, height);
+    const expected = unsharpMask(med, width, height, 2.0, 20, 3);
+    expect(Array.from(out)).toEqual(Array.from(expected));
+    // And it must differ from the standard 50% pass.
+    const standard = unsharpMask(med, width, height, 2.0, 50, 3);
+    expect(Array.from(out)).not.toEqual(Array.from(standard));
+  });
 });
