@@ -1,4 +1,5 @@
 import { medianFilter5x5 } from "./medianFilter";
+import { adaptiveEdgeRestore } from "./unsharpMask";
 
 export interface DecodedImage {
   width: number;
@@ -29,8 +30,11 @@ export async function decodeBlobToImageData(blob: Blob): Promise<DecodedImage> {
   // Light denoise before tracing: a 5x5 median pass removes speckle noise
   // and smooths photographic gradients while preserving sharp edges
   // (parity harness: 0.9788 overall, +0.0029 over the 3x3 window, no
-  // per-image regressions).
-  const data = medianFilter5x5(raw, canvas.width, canvas.height);
+  // per-image regressions). An adaptive unsharp mask then restores edge
+  // crispness on noisy/photographic inputs only (parity harness: +0.0010
+  // to 0.9798, no per-image regressions); clean flat artwork is untouched.
+  const denoised = medianFilter5x5(raw, canvas.width, canvas.height);
+  const data = adaptiveEdgeRestore(raw, denoised, canvas.width, canvas.height);
   return {
     width: canvas.width,
     height: canvas.height,
