@@ -46,7 +46,7 @@ describe("localState", () => {
       expect(state.sliderPosition).toBe(50);
       expect(state.theme).toBe("system");
       expect(state.settings).toBeDefined();
-      expect(state.settings.mode).toBe("none");
+      expect(state.settings.mode).toBe("spline");
     });
   });
 

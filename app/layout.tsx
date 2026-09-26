@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Manrope } from "next/font/google";
+import Script from "next/script";
 import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 
@@ -9,22 +10,42 @@ const manrope = Manrope({
   variable: "--font-manrope",
 });
 
+const siteDescription =
+  "Free online PNG to SVG converter: turn PNG images into clean layered SVG, EPS and DXF vectors right in your browser. No uploads, no sign-up, no watermarks.";
+
+const webAppJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  name: "PNG2SVG.IO",
+  url: "https://png2svg.io",
+  applicationCategory: "DesignApplication",
+  operatingSystem: "Web",
+  offers: {
+    "@type": "Offer",
+    price: "0",
+    priceCurrency: "USD",
+  },
+  description: siteDescription,
+};
+
 export const metadata: Metadata = {
   metadataBase: new URL("https://png2svg.io"),
   title: {
-    default: "PNG2SVG.IO",
+    default: "Free PNG to SVG Converter | PNG2SVG.IO",
     template: "%s | PNG2SVG.IO",
   },
-  description:
-    "Convert PNG artwork into clean SVG, EPS, and DXF exports directly in your browser with layered vector output.",
+  description: siteDescription,
   applicationName: "PNG2SVG.IO",
   keywords: [
     "png to svg",
+    "png to svg converter",
+    "convert png to vector",
     "svg converter",
     "eps export",
     "dxf export",
     "vector converter",
     "image to vector",
+    "svg for cricut",
     "client-side converter",
   ],
   authors: [
@@ -61,9 +82,8 @@ export const metadata: Metadata = {
     type: "website",
     url: "https://png2svg.io",
     siteName: "PNG2SVG.IO",
-    title: "PNG2SVG.IO",
-    description:
-      "Convert PNG artwork into clean SVG, EPS, and DXF exports directly in your browser with layered vector output.",
+    title: "Free PNG to SVG Converter | PNG2SVG.IO",
+    description: siteDescription,
     locale: "en_US",
     images: [
       {
@@ -76,9 +96,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "PNG2SVG.IO",
-    description:
-      "Convert PNG artwork into clean SVG, EPS, and DXF exports directly in your browser with layered vector output.",
+    title: "Free PNG to SVG Converter | PNG2SVG.IO",
+    description: siteDescription,
     creator: "@bliitzkrieg",
     images: ["/logo.png"],
   },
@@ -97,9 +116,16 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${manrope.className} ${manrope.variable}`}>
-        <ClerkProvider>
-          {children}
-        </ClerkProvider>
+        <Script
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1821039974714849"
+          strategy="afterInteractive"
+          crossOrigin="anonymous"
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(webAppJsonLd) }}
+        />
+        <ClerkProvider>{children}</ClerkProvider>
       </body>
     </html>
   );

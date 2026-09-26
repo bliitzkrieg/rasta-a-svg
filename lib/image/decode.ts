@@ -24,9 +24,10 @@ export async function decodeBlobToImageData(blob: Blob): Promise<DecodedImage> {
   ctx.imageSmoothingQuality = "high";
   ctx.drawImage(bitmap, 0, 0, outputWidth, outputHeight);
   const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+  // getImageData already returns a fresh buffer; no extra copy needed.
   return {
     width: canvas.width,
     height: canvas.height,
-    pixels: new Uint8ClampedArray(data)
+    pixels: data,
   };
 }

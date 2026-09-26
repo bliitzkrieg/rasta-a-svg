@@ -6,9 +6,9 @@ export const DEFAULT_SETTINGS: ConversionSettings = {
   filterSpeckle: 4,
   colorPrecision: 6,
   layerDifference: 16,
-  mode: "none",
+  mode: "spline",
   cornerThreshold: 60,
   lengthThreshold: 4,
   spliceThreshold: 45,
-  pathPrecision: 8,
+  pathPrecision: 3,
 };

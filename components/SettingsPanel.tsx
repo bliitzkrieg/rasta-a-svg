@@ -130,9 +130,9 @@ export function SettingsPanel({
               })
             }
           >
-            <option value="none">Pixel</option>
-            <option value="polygon">Polygon</option>
             <option value="spline">Spline</option>
+            <option value="polygon">Polygon</option>
+            <option value="none">Pixel</option>
           </select>
         </label>
         {showCurveControls ? (

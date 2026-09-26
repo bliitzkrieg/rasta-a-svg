@@ -115,6 +115,12 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
       );
       const traced = JSON.parse(raw) as VTracerTraceOutput;
 
+      if (traced.layers.length === 0) {
+        throw new Error(
+          "Nothing to trace: the image looks blank or fully transparent. Try an image with visible artwork.",
+        );
+      }
+
       postMessageTyped({
         type: "progress",
         payload: { id: payload.id, phase: "Exporting vectors", progress: 92 },

@@ -66,6 +66,9 @@ export function CompareSlider({
               <div className="muted">
                 Drop or click to choose PNG files.
               </div>
+              <div className="muted">
+                Images are downscaled to 1000 px on the long edge before tracing.
+              </div>
             </div>
           </div>
         </button>

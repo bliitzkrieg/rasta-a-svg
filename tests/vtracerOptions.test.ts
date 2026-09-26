@@ -13,9 +13,9 @@ describe("toVTracerOptions", () => {
       cornerThreshold: 60,
       lengthThreshold: 4,
       maxIterations: 10,
-      pathPrecision: 8,
+      pathPrecision: 3,
       spliceThreshold: 45,
-      mode: "none",
+      mode: "spline",
     });
   });
 

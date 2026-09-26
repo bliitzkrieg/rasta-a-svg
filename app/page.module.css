@@ -177,6 +177,16 @@
   font-size: 0.9rem;
 }
 
+.notice {
+  margin: 0 0 0.75rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--brand-primary) 30%, var(--line));
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--brand-primary) 8%, var(--panel));
+  color: color-mix(in srgb, var(--brand-primary) 80%, var(--ink));
+  font-size: 0.9rem;
+}
+
 .footer {
   display: flex;
   align-items: center;

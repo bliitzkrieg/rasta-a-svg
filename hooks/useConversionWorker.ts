@@ -123,7 +123,11 @@ export function useConversionWorker(
           pixels: decoded.pixels,
           settings: state.settings,
         };
-        worker.postMessage({ type: "convert", payload });
+        // Transfer (not clone) the pixel buffer: it is 4 MB at 1000x1000 and
+        // is never reused on the main thread after this point.
+        worker.postMessage({ type: "convert", payload }, [
+          payload.pixels.buffer as ArrayBuffer,
+        ]);
       } catch (error) {
         processingRef.current = null;
         const messageText =
