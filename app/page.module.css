@@ -30,6 +30,8 @@
 .logo {
   width: clamp(168px, 20vw, 220px);
   height: auto;
+  display: block;
+  color: var(--ink);
 }
 
 .topbarControls {

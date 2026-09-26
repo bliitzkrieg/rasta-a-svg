@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import { Logo } from "./Logo";
 import { type DragEvent, useMemo, useRef, useState } from "react";
 import { PreviewPane } from "@/components/PreviewPane";
 import { QueueList } from "@/components/QueueList";
@@ -234,14 +234,7 @@ export default function ConverterApp() {
     >
       <header ref={topbarRef} className={styles.topbar}>
         <a href="/" className={styles.brandLink} aria-label="png2svg.io home">
-          <Image
-            src="/logo.png"
-            alt="png2svg.io"
-            width={220}
-            height={48}
-            className={styles.logo}
-            priority
-          />
+          <Logo className={styles.logo} />
         </a>
         <div className={styles.topbarControls}>
           <div className={styles.statusRow}>

@@ -73,10 +73,10 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       { url: "/icon.svg", type: "image/svg+xml" },
-      { url: "/logo.png", type: "image/png" },
+      { url: "/apple-touch-icon.png", type: "image/png", sizes: "180x180" },
     ],
     shortcut: "/icon.svg",
-    apple: "/logo.png",
+    apple: "/apple-touch-icon.png",
   },
   openGraph: {
     type: "website",
@@ -87,10 +87,10 @@ export const metadata: Metadata = {
     locale: "en_US",
     images: [
       {
-        url: "/logo.png",
-        width: 1325,
-        height: 340,
-        alt: "PNG2SVG.IO logo",
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "PNG2SVG.IO: free PNG to SVG converter",
       },
     ],
   },
@@ -99,7 +99,7 @@ export const metadata: Metadata = {
     title: "Free PNG to SVG Converter | PNG2SVG.IO",
     description: siteDescription,
     creator: "@bliitzkrieg",
-    images: ["/logo.png"],
+    images: ["/og-image.png"],
   },
   category: "design tools",
   other: {

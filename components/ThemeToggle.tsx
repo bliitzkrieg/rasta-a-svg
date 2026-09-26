@@ -31,7 +31,7 @@ export function ThemeToggle({ theme, onThemeChange }: ThemeToggleProps) {
         aria-label={`Theme: ${label(theme)}. Switch to ${label(nextTheme(theme))}.`}
       >
         <span className="theme-toggle-icon" aria-hidden>
-          {theme === "light" ? "☀" : theme === "dark" ? "◇" : "◐"}
+          {theme === "light" ? "☀" : theme === "dark" ? "☾" : "◐"}
         </span>
         <span className="theme-toggle-label">{label(theme)}</span>
       </button>
