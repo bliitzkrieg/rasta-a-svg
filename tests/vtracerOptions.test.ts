@@ -9,12 +9,12 @@ describe("toVTracerOptions", () => {
       hierarchical: "stacked",
       colorPrecision: 8,
       filterSpeckle: 4,
-      layerDifference: 16,
+      layerDifference: 1,
       cornerThreshold: 60,
       lengthThreshold: 24,
       maxIterations: 10,
       pathPrecision: 3,
-      spliceThreshold: 45,
+      spliceThreshold: 30,
       mode: "spline",
     });
   });
