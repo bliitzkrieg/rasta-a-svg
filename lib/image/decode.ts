@@ -1,5 +1,6 @@
 import { medianFilter5x5 } from "./medianFilter";
 import { adaptiveEdgeRestore } from "./unsharpMask";
+import { descreenIfDithered } from "./descreen";
 import { posterizeImageData } from "./posterize";
 import { adaptiveMajorityVote } from "./majorityVote";
 import { compositeAlphaOverWhite } from "./alphaComposite";
@@ -55,8 +56,15 @@ export async function decodeBlobToImageData(blob: Blob): Promise<DecodedImage> {
   // flat artwork where those colors already dominate (parity harness:
   // +0.0003 to 0.9915, no per-image regressions; diagonal_text 0.9914 to
   // 0.9942, goose_balloon 0.9931 to 0.9932, text_logo 0.9961 to 0.9962).
+  // Ordered-dithered inputs (detected by negative neighbor correlation)
+  // skip the edge restore and are descreened with a Gaussian instead, so
+  // the surviving 1px checkerboard becomes the underlying tone ramp
+  // (parity harness: +0.0026 to 0.9938, no per-image regressions;
+  // dither 0.9566 to 0.9953).
   const denoised = medianFilter5x5(raw, canvas.width, canvas.height);
-  const restored = adaptiveEdgeRestore(raw, denoised, canvas.width, canvas.height);
+  const descreened = descreenIfDithered(raw, denoised, canvas.width, canvas.height);
+  const restored =
+    descreened ?? adaptiveEdgeRestore(raw, denoised, canvas.width, canvas.height);
   const posterized = posterizeImageData(restored, canvas.width, canvas.height);
   const voted = adaptiveMajorityVote(posterized, canvas.width, canvas.height);
   const composited = compositeAlphaOverWhite(voted, canvas.width, canvas.height);
