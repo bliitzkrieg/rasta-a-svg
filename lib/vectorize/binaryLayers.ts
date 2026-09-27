@@ -80,7 +80,10 @@ export function topOpaquePalette(
 
 /**
  * For each pixel, its palette rank (0 = most common), or -1 when the pixel
- * is not opaque or its color is outside the palette.
+ * is fully transparent or its color is outside the palette. Semi-transparent
+ * pixels (0 < alpha < 255) are composited onto white and snapped to the
+ * nearest palette color, so soft anti-aliased edges are traced instead of
+ * dropped (which left white gaps on the wikipedia logo).
  */
 export function paletteRanks(
   pixels: Uint8ClampedArray,
@@ -97,10 +100,27 @@ export function paletteRanks(
   const n = Math.min(pixels.length, width * height * 4);
   for (let p = 0; p < width * height && p * 4 + 3 < n; p += 1) {
     const o = p * 4;
-    if (pixels[o + 3] !== 255) {
-      continue;
+    const alpha = pixels[o + 3];
+    if (alpha === 255) {
+      ranks[p] =
+        index.get(rgbKey(pixels[o], pixels[o + 1], pixels[o + 2])) ?? -1;
+    } else if (alpha > 0 && palette.length > 0) {
+      const a = alpha / 255;
+      const r = pixels[o] * a + 255 * (1 - a);
+      const g = pixels[o + 1] * a + 255 * (1 - a);
+      const b = pixels[o + 2] * a + 255 * (1 - a);
+      let best = 0;
+      let bestD = Infinity;
+      for (let i = 0; i < palette.length; i += 1) {
+        const [pr, pg, pb] = palette[i];
+        const d = (r - pr) * (r - pr) + (g - pg) * (g - pg) + (b - pb) * (b - pb);
+        if (d < bestD) {
+          bestD = d;
+          best = i;
+        }
+      }
+      ranks[p] = best;
     }
-    ranks[p] = index.get(rgbKey(pixels[o], pixels[o + 1], pixels[o + 2])) ?? -1;
   }
   return ranks;
 }

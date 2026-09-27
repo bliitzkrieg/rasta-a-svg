@@ -110,6 +110,19 @@ describe("paletteRanks", () => {
     ]);
     expect([...ranks]).toEqual([0, 1, -1]);
   });
+
+  it("snaps semi-transparent pixels to the nearest palette color", () => {
+    // (105,105,105,200) composited onto white is ~(137,137,137),
+    // nearer to (174,174,178) than to (0,0,0).
+    const pixels = makePixels(2, 1, (x) =>
+      x === 0 ? [105, 105, 105, 200] : [105, 105, 105, 0],
+    );
+    const ranks = paletteRanks(pixels, 2, 1, [
+      [174, 174, 178],
+      [0, 0, 0],
+    ]);
+    expect([...ranks]).toEqual([0, -1]);
+  });
 });
 
 describe("rgbToHex", () => {
