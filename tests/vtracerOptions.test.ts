@@ -11,7 +11,7 @@ describe("toVTracerOptions", () => {
       filterSpeckle: 1,
       layerDifference: 1,
       cornerThreshold: 60,
-      lengthThreshold: 24,
+      lengthThreshold: 12,
       maxIterations: 10,
       pathPrecision: 3,
       spliceThreshold: 30,

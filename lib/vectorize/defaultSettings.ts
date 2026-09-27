@@ -8,7 +8,7 @@ export const DEFAULT_SETTINGS: ConversionSettings = {
   layerDifference: 1,
   mode: "spline",
   cornerThreshold: 60,
-  lengthThreshold: 24,
+  lengthThreshold: 12,
   spliceThreshold: 30,
   pathPrecision: 3,
   polygonMaxArea: 1600,
