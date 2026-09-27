@@ -1,11 +1,15 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
-  gatedPaletteSnap,
+  gatedPaletteSnapTiered,
   paletteSnapImageData,
-  shouldPaletteSnap,
+  paletteSnapTier,
   PALETTE_SNAP_COLORS,
   PALETTE_SNAP_MIN_TOPK_COVERAGE,
+  PALETTE_SNAP_TIER2_COLORS,
+  PALETTE_SNAP_TIER2_MIN_TOP2_COVERAGE,
+  PALETTE_SNAP_TIER3_COLORS,
+  PALETTE_SNAP_TIER3_MIN_TOP16_COVERAGE,
 } from "@/lib/image/paletteSnap";
 
 function makePixels(
@@ -70,35 +74,63 @@ describe("paletteSnapImageData", () => {
   });
 });
 
-describe("shouldPaletteSnap", () => {
-  it("fires on flat art with fringes, skips simple and complex images", () => {
-    // Flat art with fringes: 90 black, 10 near-black fringe, 5 white.
-    // Unique = 3 <= 8, so no snap needed (gate requires unique > colors).
-    const simple = makePixels(21, 5, (x, y) => {
-      const i = y * 21 + x;
-      if (i < 90) return [0, 0, 0, 255];
-      if (i < 100) return [12, 12, 12, 255];
-      return [255, 255, 255, 255];
-    });
-    expect(shouldPaletteSnap(simple, 21, 5, 2, 0.9)).toBe(true);
-    expect(shouldPaletteSnap(simple, 21, 5, 8, 0.9)).toBe(false);
-
-    // Complex: 100 distinct colors, top-8 cover little.
-    let n = 0;
-    const complex = makePixels(10, 10, () => {
-      n += 1;
-      return [n % 256, (n * 7) % 256, (n * 13) % 256, 255];
-    });
-    expect(shouldPaletteSnap(complex, 10, 10, 8, 0.9)).toBe(false);
-  });
-
+describe("paletteSnapTier constants", () => {
   it("exposes the tuned constants", () => {
     expect(PALETTE_SNAP_COLORS).toBe(8);
     expect(PALETTE_SNAP_MIN_TOPK_COVERAGE).toBe(0.9);
+    expect(PALETTE_SNAP_TIER2_COLORS).toBe(2);
+    expect(PALETTE_SNAP_TIER2_MIN_TOP2_COVERAGE).toBe(0.95);
+    expect(PALETTE_SNAP_TIER3_COLORS).toBe(16);
+    expect(PALETTE_SNAP_TIER3_MIN_TOP16_COVERAGE).toBe(0.4);
   });
 });
 
-describe("gatedPaletteSnap", () => {
+describe("paletteSnapTier", () => {
+  it("selects tier 1 (k=2) for few colors with a dominant pair", () => {
+    // thin_lines: 6 unique colors, top-2 cover 98.4%.
+    const [w, h] = readFileSync("/tmp/ps_thin_lines.png.size", "utf8")
+      .trim()
+      .split(" ")
+      .map(Number);
+    const input = new Uint8ClampedArray(
+      readFileSync("/tmp/ps_thin_lines.png.in.rgba").buffer,
+    );
+    expect(paletteSnapTier(input)).toBe(2);
+    expect(w).toBeGreaterThan(0);
+    expect(h).toBeGreaterThan(0);
+  });
+
+  it("selects tier 2 (k=8) for flat artwork with fringes", () => {
+    // dither: 102 unique colors, top-8 cover 94.4%.
+    const input = new Uint8ClampedArray(
+      readFileSync("/tmp/ps_dither.png.in.rgba").buffer,
+    );
+    expect(paletteSnapTier(input)).toBe(8);
+  });
+
+  it("selects tier 3 (k=16) for clustered mid-complexity", () => {
+    // wikipedia_logo: 277 unique colors, top-16 cover 48.7%.
+    const input = new Uint8ClampedArray(
+      readFileSync("/tmp/ps_wikipedia_logo.png.in.rgba").buffer,
+    );
+    expect(paletteSnapTier(input)).toBe(16);
+  });
+
+  it("returns null for diffuse content", () => {
+    // photo: 7146 unique colors, top-16 cover 14.5%.
+    const input = new Uint8ClampedArray(
+      readFileSync("/tmp/ps_photo.png.in.rgba").buffer,
+    );
+    expect(paletteSnapTier(input)).toBeNull();
+    // gradient: 6818 unique colors, top-16 cover 0.6%.
+    const grad = new Uint8ClampedArray(
+      readFileSync("/tmp/ps_gradient.png.in.rgba").buffer,
+    );
+    expect(paletteSnapTier(grad)).toBeNull();
+  });
+});
+
+describe("gatedPaletteSnapTiered", () => {
   it("matches the parity harness byte-identically on real images", () => {
     for (const name of [
       "diagonal_text.png",
@@ -108,6 +140,8 @@ describe("gatedPaletteSnap", () => {
       "gradient.png",
       "transparency.png",
       "wikipedia_logo.png",
+      "thin_lines.png",
+      "dither.png",
     ]) {
       const [w, h] = readFileSync(`/tmp/ps_${name}.size`, "utf8")
         .trim()
@@ -119,7 +153,7 @@ describe("gatedPaletteSnap", () => {
       const expected = new Uint8ClampedArray(
         readFileSync(`/tmp/ps_${name}.out.rgba`).buffer,
       );
-      const out = gatedPaletteSnap(input, w, h);
+      const out = gatedPaletteSnapTiered(input, w, h);
       expect(out.length).toBe(expected.length);
       expect(out).toEqual(expected);
     }

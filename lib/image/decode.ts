@@ -4,7 +4,7 @@ import { descreenIfDithered } from "./descreen";
 import { posterizeImageData } from "./posterize";
 import { adaptiveMajorityVote } from "./majorityVote";
 import { compositeAlphaOverWhite } from "./alphaComposite";
-import { gatedPaletteSnap } from "./paletteSnap";
+import { gatedPaletteSnapTiered } from "./paletteSnap";
 
 export interface DecodedImage {
   width: number;
@@ -68,7 +68,7 @@ export async function decodeBlobToImageData(blob: Blob): Promise<DecodedImage> {
   const posterized = posterizeImageData(restored, canvas.width, canvas.height);
   const voted = adaptiveMajorityVote(posterized, canvas.width, canvas.height);
   const composited = compositeAlphaOverWhite(voted, canvas.width, canvas.height);
-  const data = gatedPaletteSnap(composited, canvas.width, canvas.height);
+  const data = gatedPaletteSnapTiered(composited, canvas.width, canvas.height);
   return {
     width: canvas.width,
     height: canvas.height,

@@ -1,5 +1,5 @@
 /**
- * Gated palette-snap pass over the composited label map.
+ * Tiered gated palette-snap pass over the composited label map.
  *
  * After posterization, anti-aliased fringes and soft edges leave pixels
  * whose colors sit between the artwork's true palette colors. The tracer's
@@ -9,25 +9,31 @@
  * nearest of the image's top-k colors by pixel count collapses those
  * fringes onto the dominant palette before the tracer sees them.
  *
- * The snap is applied adaptively: it is kept only when the image has more
- * than k unique opaque colors AND the top-k colors already cover at least
- * PALETTE_SNAP_MIN_TOPK_COVERAGE of opaque pixels. That combination fires
- * on flat artwork with fringes (text, logos: diagonal_text, goose_balloon,
- * text_logo) and skips everything else: images with few colors don't need
- * it, and complex content (gradient, photo, wikipedia_logo) where the top
- * colors cover little would be damaged by the collapse. Measured top-8
- * coverage on the parity set: gainers 0.977 to 1.000, skipped images
- * 0.003 to 0.346 (transparency 1.000 but only 6 unique colors), so 0.90
- * separates the regimes with wide margin.
+ * The snap strength is chosen by a three-tier gate on the opaque color
+ * histogram:
+ * - Tier 1: at most 8 unique colors and top-2 cover >= 95% -> snap to 2.
+ *   Fires on images like thin_lines where fringe tints splinter a
+ *   dominant pair.
+ * - Tier 2: more than 8 unique colors and top-8 cover >= 90% -> snap
+ *   to 8. Fires on flat artwork with fringes (diagonal_text,
+ *   goose_balloon, text_logo, dither).
+ * - Tier 3: more than 8 unique colors and top-16 cover >= 40% -> snap
+ *   to 16. Fires on clustered mid-complexity images like wikipedia_logo
+ *   whose posterized gradient bands widen and trace more cleanly.
+ * Diffuse content (photo, gradient, noisy_photo) matches no tier and is
+ * left unchanged. Measured top-16 coverage on the parity set: tier-3
+ * gainer 0.487, skipped images 0.006 to 0.145, so 0.40 separates the
+ * regimes with wide margin.
  *
- * Parity harness: +0.0003 overall (0.9912 to 0.9915), zero per-image
- * regressions (diagonal_text 0.9914 to 0.9918, goose_balloon 0.9931 to
- * 0.9952, text_logo 0.9961 to 0.9969; all others tie).
+ * Parity harness: +0.0002 overall (0.9939 to 0.9941), zero per-image
+ * regressions (chart +0.0005, diagonal_text +0.0007, icons +0.0010,
+ * text_logo +0.0001, thin_lines +0.0011, wikipedia_logo +0.0018; all
+ * others tie).
  *
- * The implementation mirrors parity.py's _palette_snap_rgba plus the
- * snapgate gate 1:1: the two are cross-checked byte-identical on all
- * harness test images (see paletteSnap.test.ts). Distances are 32-bit
- * squared RGB differences; ties resolve to the lowest palette index.
+ * The implementation mirrors parity.py's tiered gate 1:1: the two are
+ * cross-checked byte-identical on all harness test images (see
+ * paletteSnap.test.ts). Distances are 32-bit squared RGB differences;
+ * ties resolve to the lowest palette index.
  */
 
 export const PALETTE_SNAP_COLORS = 8;
@@ -109,48 +115,72 @@ export function paletteSnapImageData(
   return out;
 }
 
+export const PALETTE_SNAP_TIER2_COLORS = 2;
+export const PALETTE_SNAP_TIER2_MIN_TOP2_COVERAGE = 0.95;
+export const PALETTE_SNAP_TIER3_COLORS = 16;
+export const PALETTE_SNAP_TIER3_MIN_TOP16_COVERAGE = 0.4;
+
 /**
- * Decide whether the palette snap should be applied: more than `colors`
- * unique opaque colors, and the top `colors` cover at least
- * `minCoverage` of opaque pixels.
+ * Decide which palette-snap tier applies, or null for no snap.
+ *
+ * Three tiers, checked in order:
+ * - Tier 1 (few colors, dominant pair): at most 8 unique opaque colors
+ *   and the top 2 cover >= 95%. Fires on images like thin_lines where a
+ *   few fringe tints splinter the dominant pair; snapping to 2 collapses
+ *   the tints so the tracer does not fragment them into noisy bands.
+ * - Tier 2 (flat artwork with fringes): more than 8 unique opaque colors
+ *   and the top 8 cover >= 90%. The original gate; fires on text/logos.
+ * - Tier 3 (clustered mid-complexity): more than 8 unique opaque colors
+ *   and the top 16 cover >= 40%. Fires on images like wikipedia_logo
+ *   whose posterized gradient bands form tight color clusters; snapping
+ *   to 16 widens the bands so boundaries trace more accurately. Skips
+ *   diffuse content (photo, gradient, noisy_photo) where top-16 coverage
+ *   is 0.006 to 0.145.
  */
-export function shouldPaletteSnap(
-  pixels: Uint8ClampedArray,
-  width: number,
-  height: number,
-  colors: number = PALETTE_SNAP_COLORS,
-  minCoverage: number = PALETTE_SNAP_MIN_TOPK_COVERAGE,
-): boolean {
+export function paletteSnapTier(pixels: Uint8ClampedArray): number | null {
   const counts = countColors(pixels, true);
-  if (counts.size <= colors) {
-    return false;
+  const n = counts.size;
+  if (n === 0) {
+    return null;
   }
   const sorted = [...counts.values()].sort((a, b) => b - a);
-  let top = 0;
   let total = 0;
+  let top2 = 0;
+  let top8 = 0;
+  let top16 = 0;
   for (let i = 0; i < sorted.length; i++) {
     total += sorted[i];
-    if (i < colors) {
-      top += sorted[i];
-    }
+    if (i < 2) top2 += sorted[i];
+    if (i < 8) top8 += sorted[i];
+    if (i < 16) top16 += sorted[i];
   }
-  return total > 0 && top / total >= minCoverage;
+  if (total === 0) {
+    return null;
+  }
+  if (n <= 8 && top2 / total >= PALETTE_SNAP_TIER2_MIN_TOP2_COVERAGE) {
+    return PALETTE_SNAP_TIER2_COLORS;
+  }
+  if (n > 8 && top8 / total >= PALETTE_SNAP_MIN_TOPK_COVERAGE) {
+    return PALETTE_SNAP_COLORS;
+  }
+  if (n > 8 && top16 / total >= PALETTE_SNAP_TIER3_MIN_TOP16_COVERAGE) {
+    return PALETTE_SNAP_TIER3_COLORS;
+  }
+  return null;
 }
 
 /**
- * Gated palette snap: apply the snap only when shouldPaletteSnap says
- * the image is flat artwork with fringes; otherwise return the input
- * unchanged.
+ * Tiered gated palette snap: pick the snap strength via paletteSnapTier;
+ * return the input unchanged when no tier fires.
  */
-export function gatedPaletteSnap(
+export function gatedPaletteSnapTiered(
   pixels: Uint8ClampedArray,
   width: number,
   height: number,
-  colors: number = PALETTE_SNAP_COLORS,
-  minCoverage: number = PALETTE_SNAP_MIN_TOPK_COVERAGE,
 ): Uint8ClampedArray {
-  if (!shouldPaletteSnap(pixels, width, height, colors, minCoverage)) {
+  const tier = paletteSnapTier(pixels);
+  if (tier === null) {
     return pixels.slice(0, width * height * 4);
   }
-  return paletteSnapImageData(pixels, width, height, colors);
+  return paletteSnapImageData(pixels, width, height, tier);
 }
