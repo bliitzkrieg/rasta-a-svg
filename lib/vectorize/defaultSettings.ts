@@ -7,7 +7,7 @@ export const DEFAULT_SETTINGS: ConversionSettings = {
   colorPrecision: 8,
   layerDifference: 1,
   mode: "spline",
-  cornerThreshold: 60,
+  cornerThreshold: 30,
   lengthThreshold: 12,
   spliceThreshold: 30,
   pathPrecision: 3,
