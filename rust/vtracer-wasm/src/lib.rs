@@ -3,7 +3,8 @@ use std::collections::{HashMap, HashSet};
 use std::f64::consts::PI;
 use wasm_bindgen::prelude::*;
 use visioncortex::color_clusters::{
-    Clusters as ColorClusters, KeyingAction, Runner, RunnerConfig, HIERARCHICAL_MAX,
+    Cluster as ColorCluster, Clusters as ColorClusters, ClustersView, KeyingAction, Runner,
+    RunnerConfig, HIERARCHICAL_MAX,
 };
 use visioncortex::clusters::Clusters as BinaryClusters;
 use visioncortex::{
@@ -32,6 +33,8 @@ struct TraceOptions {
     pathPrecision: u32,
     #[serde(default = "default_polygon_max_area")]
     polygonMaxArea: usize,
+    #[serde(default = "default_exact_flat_polygons")]
+    exactFlatPolygons: bool,
     spliceThreshold: f64,
     mode: String,
 }
@@ -131,6 +134,68 @@ fn default_path_precision() -> u32 {
 /// them tightly. Large smooth curves keep the spline look.
 fn default_polygon_max_area() -> usize {
     0
+}
+
+/// When true, small clusters (the polygonMaxArea rule) whose pixels are all
+/// the same color are traced with the raw pixel-corner walk instead of the
+/// smoothed polygon. Exact walks are near-perfect for binary art like
+/// halftone dots; anti-aliased clusters keep smoothing, which mimics soft
+/// edges better than a stair-step walk.
+fn default_exact_flat_polygons() -> bool {
+    false
+}
+
+/// Maximum per-channel difference for a cluster to count as flat.
+const FLAT_CLUSTER_DELTA: i16 = 2;
+
+/// True when every pixel in the cluster is within FLAT_CLUSTER_DELTA of the
+/// cluster's first pixel on every channel. Gates the exact pixel-corner
+/// walk to binary art (halftone dots, solid fills) where it is near-perfect,
+/// keeping the smoothed polygon for anti-aliased clusters where smoothing
+/// mimics the soft edge better.
+fn color_cluster_is_flat(cluster: &ColorCluster, view: &ClustersView) -> bool {
+    let mut indices = cluster.iter();
+    let first_index = match indices.next() {
+        Some(index) => *index,
+        None => return true,
+    };
+    let first = match view.get_pixel_at_index(first_index) {
+        Some(color) => color,
+        None => return false,
+    };
+    indices.all(|index| match view.get_pixel_at_index(*index) {
+        Some(color) => {
+            (color.r as i16 - first.r as i16).abs() <= FLAT_CLUSTER_DELTA
+                && (color.g as i16 - first.g as i16).abs() <= FLAT_CLUSTER_DELTA
+                && (color.b as i16 - first.b as i16).abs() <= FLAT_CLUSTER_DELTA
+                && (color.a as i16 - first.a as i16).abs() <= FLAT_CLUSTER_DELTA
+        }
+        None => false,
+    })
+}
+
+/// Pick the path simplification mode for one color cluster. Small clusters
+/// get Polygon even when the user asked for Spline, to avoid spline overshoot
+/// on tiny features; when exactFlatPolygons is on, flat small clusters use
+/// the raw pixel-corner walk (None) for near-perfect binary-art tracing.
+/// Everything else uses the requested mode unchanged.
+fn color_cluster_simplify_mode(
+    cluster: &ColorCluster,
+    view: &ClustersView,
+    options: &TraceOptions,
+) -> PathSimplifyMode {
+    if options.mode == "spline"
+        && options.polygonMaxArea > 0
+        && cluster.area() <= options.polygonMaxArea
+    {
+        if options.exactFlatPolygons && color_cluster_is_flat(cluster, view) {
+            PathSimplifyMode::None
+        } else {
+            PathSimplifyMode::Polygon
+        }
+    } else {
+        to_simplify_mode(&options.mode)
+    }
 }
 
 /// Pick the path simplification mode for one cluster. Small clusters get
@@ -288,7 +353,7 @@ fn build_color_output(
         let compound = cluster.to_compound_path(
             &view,
             false,
-            cluster_simplify_mode(cluster.area(), options),
+            color_cluster_simplify_mode(cluster, &view, options),
             deg_to_rad(options.cornerThreshold),
             options.lengthThreshold,
             options.maxIterations,

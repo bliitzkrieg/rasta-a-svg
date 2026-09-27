@@ -17,6 +17,7 @@ describe("toVTracerOptions", () => {
       spliceThreshold: 30,
       mode: "spline",
       polygonMaxArea: 1600,
+      exactFlatPolygons: true,
     });
   });
 

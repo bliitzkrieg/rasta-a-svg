@@ -12,4 +12,5 @@ export const DEFAULT_SETTINGS: ConversionSettings = {
   spliceThreshold: 30,
   pathPrecision: 3,
   polygonMaxArea: 1600,
+  exactFlatPolygons: true,
 };

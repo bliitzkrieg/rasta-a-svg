@@ -23,6 +23,7 @@ export interface ConversionSettings {
   spliceThreshold: number;
   pathPrecision: number;
   polygonMaxArea: number;
+  exactFlatPolygons: boolean;
 }
 
 export interface VectorPoint {

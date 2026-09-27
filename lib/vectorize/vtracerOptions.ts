@@ -18,6 +18,7 @@ export interface VTracerOptions {
   spliceThreshold: number;
   mode: VTracerMode;
   polygonMaxArea: number;
+  exactFlatPolygons: boolean;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -42,5 +43,6 @@ export function toVTracerOptions(
     spliceThreshold: clamp(Math.round(settings.spliceThreshold), 0, 180),
     mode: settings.mode,
     polygonMaxArea: clamp(Math.round(settings.polygonMaxArea), 0, 65536),
+    exactFlatPolygons: settings.exactFlatPolygons === true,
   };
 }
