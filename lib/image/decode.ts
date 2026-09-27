@@ -4,12 +4,14 @@ import { descreenIfDithered } from "./descreen";
 import { posterizeImageData } from "./posterize";
 import { adaptiveMajorityVote } from "./majorityVote";
 import { compositeAlphaOverWhite } from "./alphaComposite";
-import { gatedPaletteSnapTiered } from "./paletteSnap";
+import { paletteSnapImageData, paletteSnapTier } from "./paletteSnap";
 
 export interface DecodedImage {
   width: number;
   height: number;
   pixels: Uint8ClampedArray;
+  /** Palette-snap tier that fired (2, 8, or 16), or null when no tier did. */
+  paletteTier: number | null;
 }
 
 const TARGET_MAX_DIMENSION = 1000;
@@ -68,10 +70,15 @@ export async function decodeBlobToImageData(blob: Blob): Promise<DecodedImage> {
   const posterized = posterizeImageData(restored, canvas.width, canvas.height);
   const voted = adaptiveMajorityVote(posterized, canvas.width, canvas.height);
   const composited = compositeAlphaOverWhite(voted, canvas.width, canvas.height);
-  const data = gatedPaletteSnapTiered(composited, canvas.width, canvas.height);
+  const tier = paletteSnapTier(composited);
+  const data =
+    tier === null
+      ? composited.slice(0, canvas.width * canvas.height * 4)
+      : paletteSnapImageData(composited, canvas.width, canvas.height, tier);
   return {
     width: canvas.width,
     height: canvas.height,
     pixels: data,
+    paletteTier: tier,
   };
 }

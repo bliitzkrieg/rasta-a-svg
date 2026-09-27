@@ -134,6 +134,7 @@ export function useConversionWorker(
           height: decoded.height,
           pixels: decoded.pixels,
           settings: state.settings,
+          paletteTier: decoded.paletteTier,
         };
         // Transfer (not clone) the pixel buffer: it is 4 MB at 1000x1000 and
         // is never reused on the main thread after this point.

@@ -3,6 +3,7 @@
 import { toDXF } from "@/lib/export/dxf";
 import { toEPSLevel2 } from "@/lib/export/eps";
 import { toVTracerOptions } from "@/lib/vectorize/vtracerOptions";
+import { traceBinaryLayers } from "@/lib/vectorize/binaryLayers";
 import type {
   ConversionMetrics,
   ConversionResult,
@@ -107,13 +108,36 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
         payload.pixels.byteOffset,
         payload.pixels.byteLength,
       );
-      const raw = vtracer.trace_rgba_to_json(
-        payload.width,
-        payload.height,
-        pixels,
-        JSON.stringify(options),
-      );
-      const traced = JSON.parse(raw) as VTracerTraceOutput;
+      const optionsJson = JSON.stringify(options);
+      let traced: VTracerTraceOutput;
+      if (payload.paletteTier != null && options.clusteringMode === "color") {
+        // Flat artwork: trace each palette color as a nested binary mask
+        // and stack the masks background-first. Exact per-color walks beat
+        // the color-mode tracer's fragmented clusters on these images.
+        const merged = traceBinaryLayers(
+          (w, h, px, opts) => vtracer.trace_rgba_to_json(w, h, px, opts),
+          payload.width,
+          payload.height,
+          payload.pixels,
+          payload.paletteTier,
+          optionsJson,
+        );
+        traced = {
+          width: merged.width,
+          height: merged.height,
+          layers: merged.layers,
+          svg: merged.svg,
+          metrics: merged.metrics,
+        };
+      } else {
+        const raw = vtracer.trace_rgba_to_json(
+          payload.width,
+          payload.height,
+          pixels,
+          optionsJson,
+        );
+        traced = JSON.parse(raw) as VTracerTraceOutput;
+      }
 
       if (traced.layers.length === 0) {
         throw new Error(

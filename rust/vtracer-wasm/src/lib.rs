@@ -174,6 +174,11 @@ fn color_cluster_is_flat(cluster: &ColorCluster, view: &ClustersView) -> bool {
     })
 }
 
+/// Minimum cluster area (px) for the exact pixel-corner walk. Smaller flat
+/// components are hurt by exact walks: the browser rasterizer mis-measures
+/// tiny stair-step boundaries, so they keep Polygon simplification.
+const EXACT_FLAT_MIN_AREA: usize = 10;
+
 /// Pick the path simplification mode for one color cluster. Small clusters
 /// get Polygon even when the user asked for Spline, to avoid spline overshoot
 /// on tiny features; when exactFlatPolygons is on, flat small clusters use
@@ -193,7 +198,6 @@ fn color_cluster_simplify_mode(
         // tiny stair-steps. Use Polygon for them even when exactFlatPolygons
         // is set. Larger flat components (e.g. halftone dots, median 89px)
         // keep the exact walk.
-        const EXACT_FLAT_MIN_AREA: usize = 10;
         if options.exactFlatPolygons
             && color_cluster_is_flat(cluster, view)
             && cluster.area() >= EXACT_FLAT_MIN_AREA
@@ -420,8 +424,19 @@ fn build_binary_output(
             continue;
         }
 
+        // Binary clusters are single-color by construction, so they are
+        // always "flat": apply the exact pixel-corner walk for clusters at
+        // or above the minimum area when exactFlatPolygons is on, exactly
+        // like the color path does for flat clusters. Polygon/spline
+        // simplification bows boundaries on binary art.
+        let simplify = if options.exactFlatPolygons && cluster.size() >= EXACT_FLAT_MIN_AREA
+        {
+            PathSimplifyMode::None
+        } else {
+            cluster_simplify_mode(cluster.size(), options)
+        };
         let compound = cluster.to_compound_path(
-            cluster_simplify_mode(cluster.size(), options),
+            simplify,
             deg_to_rad(options.cornerThreshold),
             options.lengthThreshold,
             options.maxIterations,

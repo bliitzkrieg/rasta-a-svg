@@ -92,6 +92,8 @@ export interface ConvertJobRequest {
   height: number;
   pixels: Uint8ClampedArray;
   settings: ConversionSettings;
+  /** Palette-snap tier that fired during decode (2, 8, or 16), if any. */
+  paletteTier: number | null;
 }
 
 export interface ConvertJobProgress {
