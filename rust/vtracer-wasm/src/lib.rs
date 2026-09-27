@@ -1,22 +1,17 @@
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::f64::consts::PI;
 use wasm_bindgen::prelude::*;
-use visioncortex::color_clusters::{
-    Cluster as ColorCluster, Clusters as ColorClusters, ClustersView, KeyingAction, Runner,
-    RunnerConfig, HIERARCHICAL_MAX,
-};
-use visioncortex::clusters::Clusters as BinaryClusters;
-use visioncortex::{
-    Color, ColorImage, ColorName, CompoundPath, CompoundPathElement, PathI32, PathSimplifyMode,
-    PointF64,
-};
-
-const KEYING_THRESHOLD: f32 = 0.2;
+use vtracer::fitter::{CurveFitter, FitParams, PixelFitter, PolygonFitter, SplineFitter};
+use vtracer::ir::{Layer, MultiPath, PathCmd, RegionMask, Shape, SubPath, VectorDoc};
+use vtracer::simplify::{CurvePass, SimplifyCurves};
+use vtracer::{Clustering, ColorImage, Config, FitMode, Hierarchical};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[allow(non_snake_case)]
+#[allow(dead_code)] // polygonMaxArea / exactFlatPolygons are kept for a later
+                    // adaptive-fitter experiment; the 1.0 port maps them then.
 struct TraceOptions {
     #[serde(default = "default_clustering_mode")]
     clusteringMode: String,
@@ -37,9 +32,18 @@ struct TraceOptions {
     exactFlatPolygons: bool,
     spliceThreshold: f64,
     mode: String,
+    /// Watershed detail override (0 = default 128). Only used with
+    /// clusteringMode "watershed". Passed via --settings in experiments;
+    /// the app never sets it.
+    #[serde(default)]
+    watershedDetail: u32,
+    /// Simplify tolerance in px (0 = off). Passed via --settings in
+    /// experiments; the app never sets it.
+    #[serde(default)]
+    simplifyTolerance: f64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct TracePoint {
     x: f64,
@@ -102,10 +106,7 @@ pub fn trace_rgba_to_json(
         return Err(JsValue::from_str("RGBA buffer length does not match image size."));
     }
 
-    let output = match options.clusteringMode.as_str() {
-        "binary" => trace_binary_image(width, height, &pixels, &options),
-        _ => trace_color_image(width, height, &pixels, &options)?,
-    };
+    let output = trace_image(width, height, &pixels, &options)?;
 
     serde_json::to_string(&output)
         .map_err(|error| JsValue::from_str(&format!("Failed to serialize trace output: {error}")))
@@ -127,89 +128,12 @@ fn default_path_precision() -> u32 {
     8
 }
 
-/// When > 0 and the requested mode is "spline", clusters at or below this
-/// pixel area are traced with Polygon simplification instead of Spline.
-/// Fitted splines bow outward past the true pixel boundary on small features
-/// (halftone dots render ~19% too dark), while pixel-corner polygons trace
-/// them tightly. Large smooth curves keep the spline look.
 fn default_polygon_max_area() -> usize {
     0
 }
 
-/// When true, small clusters (the polygonMaxArea rule) whose pixels are all
-/// the same color are traced with the raw pixel-corner walk instead of the
-/// smoothed polygon. Exact walks are near-perfect for binary art like
-/// halftone dots; anti-aliased clusters keep smoothing, which mimics soft
-/// edges better than a stair-step walk.
 fn default_exact_flat_polygons() -> bool {
     false
-}
-
-/// Maximum per-channel difference for a cluster to count as flat.
-const FLAT_CLUSTER_DELTA: i16 = 2;
-
-/// True when every pixel in the cluster is within FLAT_CLUSTER_DELTA of the
-/// cluster's first pixel on every channel. Gates the exact pixel-corner
-/// walk to binary art (halftone dots, solid fills) where it is near-perfect,
-/// keeping the smoothed polygon for anti-aliased clusters where smoothing
-/// mimics the soft edge better.
-fn color_cluster_is_flat(cluster: &ColorCluster, view: &ClustersView) -> bool {
-    let mut indices = cluster.iter();
-    let first_index = match indices.next() {
-        Some(index) => *index,
-        None => return true,
-    };
-    let first = match view.get_pixel_at_index(first_index) {
-        Some(color) => color,
-        None => return false,
-    };
-    indices.all(|index| match view.get_pixel_at_index(*index) {
-        Some(color) => {
-            (color.r as i16 - first.r as i16).abs() <= FLAT_CLUSTER_DELTA
-                && (color.g as i16 - first.g as i16).abs() <= FLAT_CLUSTER_DELTA
-                && (color.b as i16 - first.b as i16).abs() <= FLAT_CLUSTER_DELTA
-                && (color.a as i16 - first.a as i16).abs() <= FLAT_CLUSTER_DELTA
-        }
-        None => false,
-    })
-}
-
-/// Pick the path simplification mode for one color cluster. Small clusters
-/// get Polygon even when the user asked for Spline, to avoid spline overshoot
-/// on tiny features; when exactFlatPolygons is on, flat small clusters use
-/// the raw pixel-corner walk (None) for near-perfect binary-art tracing.
-/// Everything else uses the requested mode unchanged.
-fn color_cluster_simplify_mode(
-    cluster: &ColorCluster,
-    view: &ClustersView,
-    options: &TraceOptions,
-) -> PathSimplifyMode {
-    if options.mode == "spline"
-        && options.polygonMaxArea > 0
-        && cluster.area() <= options.polygonMaxArea
-    {
-        if options.exactFlatPolygons && color_cluster_is_flat(cluster, view) {
-            PathSimplifyMode::None
-        } else {
-            PathSimplifyMode::Polygon
-        }
-    } else {
-        to_simplify_mode(&options.mode)
-    }
-}
-
-/// Pick the path simplification mode for one cluster. Small clusters get
-/// Polygon even when the user asked for Spline, to avoid spline overshoot
-/// on tiny features; everything else uses the requested mode unchanged.
-fn cluster_simplify_mode(area: usize, options: &TraceOptions) -> PathSimplifyMode {
-    if options.mode == "spline"
-        && options.polygonMaxArea > 0
-        && area <= options.polygonMaxArea
-    {
-        PathSimplifyMode::Polygon
-    } else {
-        to_simplify_mode(&options.mode)
-    }
 }
 
 fn build_color_image(width: u32, height: u32, pixels: &[u8]) -> ColorImage {
@@ -221,6 +145,9 @@ fn build_color_image(width: u32, height: u32, pixels: &[u8]) -> ColorImage {
 /// Pixels below half opacity are visual background noise; pixels at or above
 /// it are solid foreground. Snapping to one side or the other keeps soft
 /// alpha halos from being traced as solid color, which would bloat shapes.
+/// The 1.0 frontend does its own transparency keying, but it only treats
+/// fully-transparent (a == 0) pixels as background, so this flattening still
+/// has to run first.
 fn flatten_alpha(image: &mut ColorImage) {
     for rgba in image.pixels.chunks_exact_mut(4) {
         if rgba[3] < 128 {
@@ -231,114 +158,212 @@ fn flatten_alpha(image: &mut ColorImage) {
     }
 }
 
-fn trace_color_image(
+/// Map our TraceOptions onto the vtracer 1.0 Config.
+fn build_config(options: &TraceOptions) -> Config {
+    let mut config = Config::default();
+    config.clustering = match options.clusteringMode.as_str() {
+        "binary" => Clustering::Binary,
+        "watershed" => Clustering::Watershed,
+        _ => Clustering::ColorCluster,
+    };
+    config.hierarchical = match options.hierarchical.as_str() {
+        "cutout" => Hierarchical::Cutout,
+        _ => Hierarchical::Stacked,
+    };
+    config.filter_speckle = options.filterSpeckle;
+    config.color_precision = options.colorPrecision;
+    config.layer_difference = options.layerDifference;
+    config.mode = match options.mode.as_str() {
+        "polygon" => FitMode::Polygon,
+        "pixel" | "none" => FitMode::Pixel,
+        _ => FitMode::Spline,
+    };
+    config.corner_threshold = options.cornerThreshold.round() as i32;
+    config.length_threshold = options.lengthThreshold;
+    config.max_iterations = options.maxIterations;
+    config.splice_threshold = options.spliceThreshold.round() as i32;
+    config.path_precision = Some(options.pathPrecision);
+    config.binary_threshold = 128;
+    config.watershed_detail = if options.watershedDetail > 0 {
+        options.watershedDetail
+    } else {
+        128
+    };
+    config.simplify = if options.simplifyTolerance > 0.0 {
+        Some(options.simplifyTolerance)
+    } else {
+        None
+    };
+    // No optimizer passes: the legacy pipeline emitted geometry unmodified,
+    // and our SVG writer below rounds to path_precision itself.
+    config.optimize = 0;
+    config
+}
+
+fn trace_image(
     width: u32,
     height: u32,
     pixels: &[u8],
     options: &TraceOptions,
 ) -> Result<TraceOutput, JsValue> {
     let mut image = build_color_image(width, height, pixels);
-    // The clustering below only looks at RGB, so a semi-transparent halo
-    // (very common on PNG logos) would be treated as fully opaque and
-    // fatten every shape. Flatten transparency first: pixels that are at
-    // least half opaque become solid, the rest become fully transparent and
-    // are keyed out as background below.
     flatten_alpha(&mut image);
-    let use_keying = should_key_image(&image);
-    let key_color = if use_keying {
-        let color = find_unused_opaque_color(&image);
-        replace_transparent_pixels(&mut image, color);
-        color
+
+    let config = build_config(options);
+    let pipeline = config
+        .build()
+        .map_err(|error| JsValue::from_str(&format!("Tracer configuration failed: {error}")))?;
+
+    // For stacked compositing we compose manually so each region can use its
+    // own curve fitter (the legacy polygonMaxArea / exactFlatPolygons gating).
+    // Mosaic (cutout) mode goes through the standard pipeline.
+    let doc = if options.hierarchical == "cutout" {
+        pipeline
+            .run(&image)
+            .map_err(|error| JsValue::from_str(&format!("Trace failed: {error}")))?
     } else {
-        Color::default()
+        let mut seg = pipeline
+            .segment(&image)
+            .map_err(|error| JsValue::from_str(&format!("Segmentation failed: {error}")))?;
+        for fitter in &pipeline.color_fitters {
+            fitter.fit(&mut seg);
+        }
+        compose_adaptive(&seg, &image, options)
     };
 
-    let clusters = run_color_trace(
-        image,
-        width as usize * height as usize,
-        options,
-        key_color,
-    )?;
-
-    Ok(build_color_output(width, height, &clusters, options))
+    Ok(build_output(width, height, &doc, options))
 }
 
-fn trace_binary_image(
-    width: u32,
-    height: u32,
-    pixels: &[u8],
-    options: &TraceOptions,
-) -> TraceOutput {
-    let mut image = build_color_image(width, height, pixels);
-    flatten_alpha(&mut image);
-    let binary_image = image.to_binary_image(|pixel| pixel.a >= 128 && pixel.r < 128);
-    let clusters = binary_image.to_clusters(false);
-    build_binary_output(width, height, &clusters, options)
-}
+/// Maximum per-channel difference for a region to count as flat.
+const FLAT_CLUSTER_DELTA: i16 = 2;
 
-fn run_color_trace(
-    image: ColorImage,
-    total_pixels: usize,
-    options: &TraceOptions,
-    key_color: Color,
-) -> Result<ColorClusters, JsValue> {
-    let runner = Runner::new(
-        RunnerConfig {
-            diagonal: options.layerDifference == 0,
-            hierarchical: HIERARCHICAL_MAX,
-            batch_size: 25600,
-            good_min_area: speckle_area_threshold(options.filterSpeckle),
-            good_max_area: total_pixels,
-            is_same_color_a: 8 - options.colorPrecision,
-            is_same_color_b: 1,
-            deepen_diff: options.layerDifference,
-            hollow_neighbours: 1,
-            key_color,
-            keying_action: if options.hierarchical == "cutout" {
-                KeyingAction::Keep
-            } else {
-                KeyingAction::Discard
-            },
-        },
-        image,
-    );
-
-    let mut builder = runner.start();
-    while !builder.tick() {}
-    let clusters = builder.result();
-
-    if options.hierarchical != "cutout" {
-        return Ok(clusters);
+/// True when every pixel of the region (looked up in the source image via the
+/// mask offset) is within FLAT_CLUSTER_DELTA of the region's first pixel on
+/// every channel. Gates the exact pixel walk to binary art where it is
+/// near-perfect, mirroring the legacy color_cluster_is_flat check.
+fn region_is_flat(mask: &RegionMask, image: &ColorImage) -> bool {
+    let mut first: Option<(u8, u8, u8, u8)> = None;
+    for y in 0..mask.height() {
+        for x in 0..mask.width() {
+            if !mask.image.get_pixel(x, y) {
+                continue;
+            }
+            let ix = (x as i32 + mask.offset.x) as usize;
+            let iy = (y as i32 + mask.offset.y) as usize;
+            if ix >= image.width || iy >= image.height {
+                continue;
+            }
+            let p = image.get_pixel(ix, iy);
+            match first {
+                None => first = Some((p.r, p.g, p.b, p.a)),
+                Some((fr, fg, fb, fa)) => {
+                    if (p.r as i16 - fr as i16).abs() > FLAT_CLUSTER_DELTA
+                        || (p.g as i16 - fg as i16).abs() > FLAT_CLUSTER_DELTA
+                        || (p.b as i16 - fb as i16).abs() > FLAT_CLUSTER_DELTA
+                        || (p.a as i16 - fa as i16).abs() > FLAT_CLUSTER_DELTA
+                    {
+                        return false;
+                    }
+                }
+            }
+        }
     }
-
-    let view = clusters.view();
-    let image = view.to_color_image();
-    let runner = Runner::new(
-        RunnerConfig {
-            diagonal: false,
-            hierarchical: 64,
-            batch_size: 25600,
-            good_min_area: 0,
-            good_max_area: image.width * image.height,
-            is_same_color_a: 0,
-            is_same_color_b: 1,
-            deepen_diff: 0,
-            hollow_neighbours: 0,
-            key_color: Default::default(),
-            keying_action: KeyingAction::Discard,
-        },
-        image,
-    );
-
-    let mut builder = runner.start();
-    while !builder.tick() {}
-    Ok(builder.result())
+    true
 }
 
-fn build_color_output(
+fn deg_to_rad(value: f64) -> f64 {
+    value * PI / 180.0
+}
+
+/// Stacked compositing with per-region fitter dispatch. Small regions use the
+/// exact pixel walk (flat ones) or polygon simplification, exactly like the
+/// legacy pipeline's polygonMaxArea / exactFlatPolygons gating; everything
+/// else uses the globally requested fit mode.
+fn compose_adaptive(
+    seg: &vtracer::ir::Segmentation,
+    image: &ColorImage,
+    options: &TraceOptions,
+) -> VectorDoc {
+    let spline = SplineFitter::new(FitParams {
+        corner_threshold: deg_to_rad(options.cornerThreshold),
+        length_threshold: options.lengthThreshold,
+        max_iterations: options.maxIterations,
+        splice_threshold: deg_to_rad(options.spliceThreshold),
+    });
+    let polygon = PolygonFitter;
+    let pixel = PixelFitter;
+    let passes = curve_passes(options);
+
+    let mut doc = VectorDoc::new(seg.width, seg.height);
+    for layer in &seg.layers {
+        let fitter: &dyn CurveFitter =
+            choose_fitter(layer, image, options, &spline, &polygon, &pixel);
+        let mut path = MultiPath::new();
+        for geom in fitter.fit_region(&layer.mask) {
+            let mut geom = geom;
+            for pass in &passes {
+                geom = pass.ring(geom);
+            }
+            path.push(geom.into_closed_subpath());
+        }
+        if !path.is_empty() {
+            doc.shapes.push(Shape {
+                paint: layer.paint,
+                path,
+            });
+        }
+    }
+    doc
+}
+
+/// Geometry passes for the adaptive compositor, mirroring Config's
+/// curve_passes: the Schneider simplify re-fit, off unless simplifyTolerance
+/// is set. Only spline-fitted contours are affected.
+fn curve_passes(options: &TraceOptions) -> Vec<Box<dyn CurvePass>> {
+    if options.simplifyTolerance > 0.0 {
+        vec![Box::new(SimplifyCurves {
+            tolerance: options.simplifyTolerance,
+            corner_threshold: deg_to_rad(options.cornerThreshold),
+        })]
+    } else {
+        Vec::new()
+    }
+}
+
+fn choose_fitter<'a>(
+    layer: &Layer,
+    image: &ColorImage,
+    options: &TraceOptions,
+    spline: &'a SplineFitter,
+    polygon: &'a PolygonFitter,
+    pixel: &'a PixelFitter,
+) -> &'a dyn CurveFitter {
+    if options.mode == "spline"
+        && options.polygonMaxArea > 0
+        && layer.mask.area() <= options.polygonMaxArea
+    {
+        // Small flat regions keep the exact pixel walk (near-perfect on
+        // binary art); small non-flat regions use polygon simplification,
+        // matching the legacy gating. (A spline-for-small-nonflat variant
+        // scored 0.9881, worse, so polygon stays.)
+        if options.exactFlatPolygons && region_is_flat(&layer.mask, image) {
+            pixel
+        } else {
+            polygon
+        }
+    } else {
+        match options.mode.as_str() {
+            "polygon" => polygon,
+            "pixel" | "none" => pixel,
+            _ => spline,
+        }
+    }
+}
+
+fn build_output(
     width: u32,
     height: u32,
-    clusters: &ColorClusters,
+    doc: &VectorDoc,
     options: &TraceOptions,
 ) -> TraceOutput {
     let mut layers: Vec<TraceLayer> = Vec::new();
@@ -347,26 +372,15 @@ fn build_color_output(
     let mut node_count = 0usize;
     let mut path_count = 0usize;
 
-    let view = clusters.view();
-    for cluster in view.clusters_output.iter().rev().map(|index| view.get_cluster(*index)) {
-        let fill_color = cluster.residue_color().to_hex_string();
-        let compound = cluster.to_compound_path(
-            &view,
-            false,
-            color_cluster_simplify_mode(cluster, &view, options),
-            deg_to_rad(options.cornerThreshold),
-            options.lengthThreshold,
-            options.maxIterations,
-            deg_to_rad(options.spliceThreshold),
-        );
-
-        let (svg_path_data, svg_offset) =
-            compound.to_svg_string(true, PointF64::default(), Some(options.pathPrecision));
-        svg_entries.push(svg_entry(&fill_color, &svg_path_data, svg_offset));
-
-        let trace_path = compound_to_trace_path(&compound, svg_path_data, svg_offset);
+    // VectorDoc shapes are in paint order, bottom first, which is the order
+    // the SVG (and the harness rasterizer) expects.
+    for shape in &doc.shapes {
+        let fill_color = shape.paint.color().to_hex_string();
+        let (trace_path, svg_path_data) = shape_to_trace_path(shape, options.pathPrecision);
         node_count += trace_path.node_count;
         path_count += 1;
+
+        svg_entries.push(svg_entry(&fill_color, &svg_path_data));
 
         if let Some(layer_index) = layer_lookup.get(&fill_color).copied() {
             layers[layer_index].paths.push(trace_path);
@@ -393,75 +407,120 @@ fn build_color_output(
     }
 }
 
-fn build_binary_output(
-    width: u32,
-    height: u32,
-    clusters: &BinaryClusters,
-    options: &TraceOptions,
-) -> TraceOutput {
-    let fill_color = Color::color(&ColorName::Black).to_hex_string();
-    let min_area = speckle_area_threshold(options.filterSpeckle);
-    let mut paths = Vec::new();
-    let mut svg_entries = Vec::new();
-    let mut node_count = 0usize;
+fn shape_to_trace_path(shape: &Shape, precision: u32) -> (TracePath, String) {
+    let mut contour_point_lists: Vec<Vec<TracePoint>> = Vec::new();
+    let mut svg_subpaths: Vec<String> = Vec::new();
 
-    for index in 0..clusters.len() {
-        let cluster = clusters.get_cluster(index);
-        if cluster.size() < min_area {
-            continue;
+    for subpath in &shape.path.subpaths {
+        let points = subpath_to_points(subpath);
+        if points.len() >= 3 {
+            contour_point_lists.push(points);
         }
-
-        let compound = cluster.to_compound_path(
-            cluster_simplify_mode(cluster.size(), options),
-            deg_to_rad(options.cornerThreshold),
-            options.lengthThreshold,
-            options.maxIterations,
-            deg_to_rad(options.spliceThreshold),
-        );
-        let (svg_path_data, svg_offset) =
-            compound.to_svg_string(true, PointF64::default(), Some(options.pathPrecision));
-        svg_entries.push(svg_entry(&fill_color, &svg_path_data, svg_offset));
-
-        let trace_path = compound_to_trace_path(&compound, svg_path_data, svg_offset);
-        node_count += trace_path.node_count;
-        paths.push(trace_path);
+        let svg = subpath_to_svg(subpath, precision);
+        if !svg.is_empty() {
+            svg_subpaths.push(svg);
+        }
     }
 
-    let path_count = paths.len();
-    let layers = if paths.is_empty() {
+    let svg_path_data = svg_subpaths.join(" ");
+    let mut contours = contour_point_lists;
+    let points = if contours.is_empty() {
         Vec::new()
     } else {
-        vec![TraceLayer {
-            name: String::from("COLOR_01"),
-            color: fill_color,
-            paths,
-        }]
+        contours.remove(0)
     };
+    let node_count = points.len() + contours.iter().map(|c| c.len()).sum::<usize>();
 
-    TraceOutput {
-        width,
-        height,
-        layers,
-        svg: build_svg(width, height, &svg_entries),
-        metrics: TraceMetrics {
-            node_count,
-            path_count,
-        },
+    let trace_path = TracePath {
+        points,
+        holes: contours,
+        closed: true,
+        node_count,
+        svg_path_data: svg_path_data.clone(),
+        svg_translate_x: 0.0,
+        svg_translate_y: 0.0,
+    };
+    (trace_path, svg_path_data)
+}
+
+/// Sample a subpath into polyline points. Line segments map directly; cubic
+/// segments are sampled, mirroring the legacy sampler the app's layer panel
+/// was built against.
+fn subpath_to_points(subpath: &SubPath) -> Vec<TracePoint> {
+    let mut out: Vec<TracePoint> = Vec::new();
+    let mut current = TracePoint { x: 0.0, y: 0.0 };
+    for cmd in &subpath.commands {
+        match cmd {
+            PathCmd::MoveTo(p) => {
+                current = TracePoint { x: p.x, y: p.y };
+                out.push(TracePoint { x: p.x, y: p.y });
+            }
+            PathCmd::LineTo(p) => {
+                current = TracePoint { x: p.x, y: p.y };
+                out.push(current.clone());
+            }
+            PathCmd::CubicTo(c1, c2, p) => {
+                let sampled = sample_cubic(
+                    current.x, current.y, c1.x, c1.y, c2.x, c2.y, p.x, p.y, 10,
+                );
+                out.extend(sampled.into_iter().skip(1));
+                current = TracePoint { x: p.x, y: p.y };
+            }
+            PathCmd::Close => {}
+        }
     }
+    out
 }
 
-fn speckle_area_threshold(value: usize) -> usize {
-    value.saturating_mul(value)
+fn subpath_to_svg(subpath: &SubPath, precision: u32) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    for cmd in &subpath.commands {
+        match cmd {
+            PathCmd::MoveTo(p) => parts.push(format!(
+                "M{},{}",
+                fmt_num(p.x, precision),
+                fmt_num(p.y, precision)
+            )),
+            PathCmd::LineTo(p) => parts.push(format!(
+                "L{},{}",
+                fmt_num(p.x, precision),
+                fmt_num(p.y, precision)
+            )),
+            PathCmd::CubicTo(c1, c2, p) => parts.push(format!(
+                "C{},{} {},{} {},{}",
+                fmt_num(c1.x, precision),
+                fmt_num(c1.y, precision),
+                fmt_num(c2.x, precision),
+                fmt_num(c2.y, precision),
+                fmt_num(p.x, precision),
+                fmt_num(p.y, precision)
+            )),
+            PathCmd::Close => parts.push(String::from("Z")),
+        }
+    }
+    parts.join(" ")
 }
 
-fn deg_to_rad(value: f64) -> f64 {
-    value * PI / 180.0
+fn fmt_num(value: f64, precision: u32) -> String {
+    let mut s = format!("{:.1$}", value, precision as usize);
+    if s.contains('.') {
+        while s.ends_with('0') {
+            s.pop();
+        }
+        if s.ends_with('.') {
+            s.pop();
+        }
+    }
+    if s == "-0" {
+        s = String::from("0");
+    }
+    s
 }
 
-fn svg_entry(fill_color: &str, svg_path_data: &str, svg_offset: PointF64) -> String {
+fn svg_entry(fill_color: &str, svg_path_data: &str) -> String {
     format!(
-        "<path fill=\"{}\" d=\"{}\" transform=\"translate({:.2}, {:.2})\" />",
-        fill_color, svg_path_data, svg_offset.x, svg_offset.y
+        "<path fill=\"{}\" d=\"{}\" transform=\"translate(0.00, 0.00)\" />",
+        fill_color, svg_path_data
     )
 }
 
@@ -474,181 +533,6 @@ fn build_svg(width: u32, height: u32, svg_entries: &[String]) -> String {
         height,
         svg_entries.join("\n")
     )
-}
-
-fn should_key_image(image: &ColorImage) -> bool {
-    if image.width == 0 || image.height == 0 {
-        return false;
-    }
-
-    let threshold = ((image.width * 2) as f32 * KEYING_THRESHOLD) as usize;
-    let mut transparent = 0usize;
-    let y_positions = [
-        0,
-        image.height / 4,
-        image.height / 2,
-        3 * image.height / 4,
-        image.height - 1,
-    ];
-
-    for y in y_positions {
-        for x in 0..image.width {
-            let offset = (y * image.width + x) * 4 + 3;
-            if image.pixels[offset] == 0 {
-                transparent += 1;
-            }
-            if transparent >= threshold {
-                return true;
-            }
-        }
-    }
-
-    false
-}
-
-fn replace_transparent_pixels(image: &mut ColorImage, key_color: Color) {
-    for rgba in image.pixels.chunks_exact_mut(4) {
-        if rgba[3] == 0 {
-            rgba[0] = key_color.r;
-            rgba[1] = key_color.g;
-            rgba[2] = key_color.b;
-            rgba[3] = 255;
-        }
-    }
-}
-
-fn find_unused_opaque_color(image: &ColorImage) -> Color {
-    let used = image
-        .pixels
-        .chunks_exact(4)
-        .filter(|rgba| rgba[3] == 255)
-        .map(|rgba| rgb_key(rgba[0], rgba[1], rgba[2]))
-        .collect::<HashSet<_>>();
-
-    let candidates = [
-        Color::new_rgba(255, 0, 0, 255),
-        Color::new_rgba(0, 255, 0, 255),
-        Color::new_rgba(0, 0, 255, 255),
-        Color::new_rgba(255, 255, 0, 255),
-        Color::new_rgba(0, 255, 255, 255),
-        Color::new_rgba(255, 0, 255, 255),
-        Color::new_rgba(128, 128, 128, 255),
-    ];
-
-    for candidate in candidates {
-        if !used.contains(&rgb_key(candidate.r, candidate.g, candidate.b)) {
-            return candidate;
-        }
-    }
-
-    for value in 0..=0x00FF_FFFFu32 {
-        if !used.contains(&value) {
-            return Color::new_rgba(
-                ((value >> 16) & 0xFF) as u8,
-                ((value >> 8) & 0xFF) as u8,
-                (value & 0xFF) as u8,
-                255,
-            );
-        }
-    }
-
-    Color::new_rgba(255, 0, 0, 255)
-}
-
-fn rgb_key(r: u8, g: u8, b: u8) -> u32 {
-    ((r as u32) << 16) | ((g as u32) << 8) | b as u32
-}
-
-fn to_simplify_mode(mode: &str) -> PathSimplifyMode {
-    match mode {
-        "polygon" => PathSimplifyMode::Polygon,
-        "none" => PathSimplifyMode::None,
-        _ => PathSimplifyMode::Spline,
-    }
-}
-
-fn compound_to_trace_path(
-    compound: &CompoundPath,
-    svg_path_data: String,
-    svg_offset: PointF64,
-) -> TracePath {
-    // The compound paths are already in absolute image coordinates (see
-    // visioncortex Cluster::to_compound_path), so the points must NOT be
-    // shifted by svg_offset again. That offset only belongs on the SVG
-    // transform, which is stored separately below.
-    let mut contours = compound
-        .paths
-        .iter()
-        .map(|element| sample_compound_element(element, PointF64::default()))
-        .filter(|points| points.len() >= 3)
-        .collect::<Vec<_>>();
-
-    let points = if contours.is_empty() {
-        Vec::new()
-    } else {
-        contours.remove(0)
-    };
-    let node_count =
-        points.len() + contours.iter().map(|contour| contour.len()).sum::<usize>();
-
-    TracePath {
-        points,
-        holes: contours,
-        closed: true,
-        node_count,
-        svg_path_data,
-        svg_translate_x: svg_offset.x,
-        svg_translate_y: svg_offset.y,
-    }
-}
-
-fn sample_compound_element(element: &CompoundPathElement, offset: PointF64) -> Vec<TracePoint> {
-    match element {
-        CompoundPathElement::PathI32(path) => path_i32_to_points(path, offset),
-        CompoundPathElement::PathF64(path) => path_f64_to_points(path, offset),
-        CompoundPathElement::Spline(spline) => {
-            let mut out = Vec::new();
-            for (segment_index, segment) in spline.points.windows(4).step_by(3).enumerate() {
-                let sampled = sample_cubic(
-                    segment[0].x + offset.x,
-                    segment[0].y + offset.y,
-                    segment[1].x + offset.x,
-                    segment[1].y + offset.y,
-                    segment[2].x + offset.x,
-                    segment[2].y + offset.y,
-                    segment[3].x + offset.x,
-                    segment[3].y + offset.y,
-                    10,
-                );
-                if segment_index == 0 {
-                    out.extend(sampled);
-                } else {
-                    out.extend(sampled.into_iter().skip(1));
-                }
-            }
-            out
-        }
-    }
-}
-
-fn path_i32_to_points(path: &PathI32, offset: PointF64) -> Vec<TracePoint> {
-    path.path
-        .iter()
-        .map(|point| TracePoint {
-            x: point.x as f64 + offset.x,
-            y: point.y as f64 + offset.y,
-        })
-        .collect()
-}
-
-fn path_f64_to_points(path: &visioncortex::PathF64, offset: PointF64) -> Vec<TracePoint> {
-    path.path
-        .iter()
-        .map(|point| TracePoint {
-            x: point.x + offset.x,
-            y: point.y + offset.y,
-        })
-        .collect()
 }
 
 fn sample_cubic(
