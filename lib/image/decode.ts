@@ -3,6 +3,7 @@ import { adaptiveEdgeRestore } from "./unsharpMask";
 import { posterizeImageData } from "./posterize";
 import { adaptiveMajorityVote } from "./majorityVote";
 import { compositeAlphaOverWhite } from "./alphaComposite";
+import { gatedPaletteSnap } from "./paletteSnap";
 
 export interface DecodedImage {
   width: number;
@@ -49,11 +50,17 @@ export async function decodeBlobToImageData(blob: Blob): Promise<DecodedImage> {
   // +0.0029 to 0.9913, no per-image regressions; diagonal_text 0.9743 to
   // 0.9914). The vote is kept only when it changes fewer than 10% of
   // pixels, so complex photographic content keeps the un-voted path.
+  // After the alpha composite, a gated palette snap collapses
+  // anti-aliased fringe tints onto the image's top-8 colors, but only on
+  // flat artwork where those colors already dominate (parity harness:
+  // +0.0003 to 0.9915, no per-image regressions; diagonal_text 0.9914 to
+  // 0.9942, goose_balloon 0.9931 to 0.9932, text_logo 0.9961 to 0.9962).
   const denoised = medianFilter5x5(raw, canvas.width, canvas.height);
   const restored = adaptiveEdgeRestore(raw, denoised, canvas.width, canvas.height);
   const posterized = posterizeImageData(restored, canvas.width, canvas.height);
   const voted = adaptiveMajorityVote(posterized, canvas.width, canvas.height);
-  const data = compositeAlphaOverWhite(voted, canvas.width, canvas.height);
+  const composited = compositeAlphaOverWhite(voted, canvas.width, canvas.height);
+  const data = gatedPaletteSnap(composited, canvas.width, canvas.height);
   return {
     width: canvas.width,
     height: canvas.height,
