@@ -1,6 +1,7 @@
 import { medianFilter5x5 } from "./medianFilter";
 import { adaptiveEdgeRestore } from "./unsharpMask";
 import { posterizeImageData } from "./posterize";
+import { adaptiveMajorityVote } from "./majorityVote";
 import { compositeAlphaOverWhite } from "./alphaComposite";
 
 export interface DecodedImage {
@@ -43,10 +44,16 @@ export async function decodeBlobToImageData(blob: Blob): Promise<DecodedImage> {
   // is a significant feature of the image (parity harness: +0.0492 to
   // 0.9812, no per-image regressions; transparency 0.4994 to 0.9916),
   // since the tracer has no alpha channel and would otherwise snap them.
+  // Between posterize and composite, an adaptive 3x3 majority vote cleans
+  // ragged single-pixel outliers along region boundaries (parity harness:
+  // +0.0029 to 0.9913, no per-image regressions; diagonal_text 0.9743 to
+  // 0.9914). The vote is kept only when it changes fewer than 10% of
+  // pixels, so complex photographic content keeps the un-voted path.
   const denoised = medianFilter5x5(raw, canvas.width, canvas.height);
   const restored = adaptiveEdgeRestore(raw, denoised, canvas.width, canvas.height);
   const posterized = posterizeImageData(restored, canvas.width, canvas.height);
-  const data = compositeAlphaOverWhite(posterized, canvas.width, canvas.height);
+  const voted = adaptiveMajorityVote(posterized, canvas.width, canvas.height);
+  const data = compositeAlphaOverWhite(voted, canvas.width, canvas.height);
   return {
     width: canvas.width,
     height: canvas.height,
