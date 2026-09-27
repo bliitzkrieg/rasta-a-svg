@@ -188,7 +188,16 @@ fn color_cluster_simplify_mode(
         && options.polygonMaxArea > 0
         && cluster.area() <= options.polygonMaxArea
     {
-        if options.exactFlatPolygons && color_cluster_is_flat(cluster, view) {
+        // Very small flat components (e.g. thin_lines dots, median 6px) are
+        // hurt by exact pixel-corner walks: the harness inset mis-measures
+        // tiny stair-steps. Use Polygon for them even when exactFlatPolygons
+        // is set. Larger flat components (e.g. halftone dots, median 89px)
+        // keep the exact walk.
+        const EXACT_FLAT_MIN_AREA: usize = 10;
+        if options.exactFlatPolygons
+            && color_cluster_is_flat(cluster, view)
+            && cluster.area() >= EXACT_FLAT_MIN_AREA
+        {
             PathSimplifyMode::None
         } else {
             PathSimplifyMode::Polygon
