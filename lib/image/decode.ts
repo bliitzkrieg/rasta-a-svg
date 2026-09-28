@@ -1,6 +1,7 @@
 import { medianFilter5x5 } from "./medianFilter";
 import { adaptiveEdgeRestore } from "./unsharpMask";
 import { ditherPassthroughIfDithered } from "./descreen";
+import { thinStructurePassthrough } from "./thinStructure";
 import { posterizeImageData } from "./posterize";
 import { adaptiveMajorityVote } from "./majorityVote";
 import { compositeAlphaOverWhite } from "./alphaComposite";
@@ -64,10 +65,25 @@ export async function decodeBlobToImageData(blob: Blob): Promise<DecodedImage> {
   // (parity harness, honest end-to-end metric: dither 0.6017 to 1.0000).
   // Tradeoff: dithered inputs produce larger SVGs (the dots become tiny
   // paths) in exchange for faithful reproduction.
+  // Images built from 1px-thin high-contrast structures (line art,
+  // wireframes) likewise skip the median denoise and the edge restore:
+  // the 5x5 median erases thin lines irreversibly, while the tracer
+  // reproduces the raw lines faithfully (parity harness, honest
+  // end-to-end metric: line_art 0.7999 to 1.0000, thin_lines 0.7913 to
+  // 1.0000). The gate (at most 8 distinct colors and the median would
+  // rewrite >= 5% of pixels) fires only on thin_lines and line_art across
+  // the 14-image suite, so photos and flat icons keep the standard path.
   const ditherRaw = ditherPassthroughIfDithered(raw, canvas.width, canvas.height);
-  const denoised = ditherRaw ?? medianFilter5x5(raw, canvas.width, canvas.height);
+  const medianDenoised =
+    ditherRaw ?? medianFilter5x5(raw, canvas.width, canvas.height);
+  const thinRaw =
+    ditherRaw ??
+    thinStructurePassthrough(raw, canvas.width, canvas.height, medianDenoised);
+  const denoised = thinRaw ?? medianDenoised;
   const restored =
-    ditherRaw ?? adaptiveEdgeRestore(raw, denoised, canvas.width, canvas.height);
+    ditherRaw ??
+    thinRaw ??
+    adaptiveEdgeRestore(raw, denoised, canvas.width, canvas.height);
   const posterized = posterizeImageData(restored, canvas.width, canvas.height);
   const voted = adaptiveMajorityVote(posterized, canvas.width, canvas.height);
   const composited = compositeAlphaOverWhite(voted, canvas.width, canvas.height);

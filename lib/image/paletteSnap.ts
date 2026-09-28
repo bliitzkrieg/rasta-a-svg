@@ -11,9 +11,11 @@
  *
  * The snap strength is chosen by a three-tier gate on the opaque color
  * histogram:
- * - Tier 1: at most 8 unique colors and top-2 cover >= 95% -> snap to 2.
- *   Fires on images like thin_lines where fringe tints splinter a
- *   dominant pair.
+ * - Tier 1: at most 8 unique colors -> snap to n (all of them). With so
+ *   few colors there are no fringe tints to collapse (the snap is the
+ *   identity), and the binary-layer tracer reproduces each color with an
+ *   exact walk. Fires on few-color art like thin_lines (3 colors: the old
+ *   top-2 >= 95% rule snapped its red lines away) and line_art.
  * - Tier 2: more than 8 unique colors and top-8 cover >= 90% -> snap
  *   to 8. Fires on flat artwork with fringes (diagonal_text,
  *   goose_balloon, text_logo, dither).
@@ -115,8 +117,6 @@ export function paletteSnapImageData(
   return out;
 }
 
-export const PALETTE_SNAP_TIER2_COLORS = 2;
-export const PALETTE_SNAP_TIER2_MIN_TOP2_COVERAGE = 0.95;
 export const PALETTE_SNAP_TIER3_COLORS = 16;
 export const PALETTE_SNAP_TIER3_MIN_TOP16_COVERAGE = 0.4;
 
@@ -124,10 +124,10 @@ export const PALETTE_SNAP_TIER3_MIN_TOP16_COVERAGE = 0.4;
  * Decide which palette-snap tier applies, or null for no snap.
  *
  * Three tiers, checked in order:
- * - Tier 1 (few colors, dominant pair): at most 8 unique opaque colors
- *   and the top 2 cover >= 95%. Fires on images like thin_lines where a
- *   few fringe tints splinter the dominant pair; snapping to 2 collapses
- *   the tints so the tracer does not fragment them into noisy bands.
+ * - Tier 1 (few colors): at most 8 unique opaque colors -> tier = n (all
+ *   of them). The snap to n is the identity (no tints to collapse), and
+ *   the binary-layer tracer gives each color an exact walk. Fires on
+ *   few-color art like thin_lines (3 colors) and line_art (2 colors).
  * - Tier 2 (flat artwork with fringes): more than 8 unique opaque colors
  *   and the top 8 cover >= 90%. The original gate; fires on text/logos.
  * - Tier 3 (clustered mid-complexity): more than 8 unique opaque colors
@@ -145,25 +145,23 @@ export function paletteSnapTier(pixels: Uint8ClampedArray): number | null {
   }
   const sorted = [...counts.values()].sort((a, b) => b - a);
   let total = 0;
-  let top2 = 0;
   let top8 = 0;
   let top16 = 0;
   for (let i = 0; i < sorted.length; i++) {
     total += sorted[i];
-    if (i < 2) top2 += sorted[i];
     if (i < 8) top8 += sorted[i];
     if (i < 16) top16 += sorted[i];
   }
   if (total === 0) {
     return null;
   }
-  if (n <= 8 && top2 / total >= PALETTE_SNAP_TIER2_MIN_TOP2_COVERAGE) {
-    return PALETTE_SNAP_TIER2_COLORS;
+  if (n <= 8) {
+    return n;
   }
-  if (n > 8 && top8 / total >= PALETTE_SNAP_MIN_TOPK_COVERAGE) {
+  if (top8 / total >= PALETTE_SNAP_MIN_TOPK_COVERAGE) {
     return PALETTE_SNAP_COLORS;
   }
-  if (n > 8 && top16 / total >= PALETTE_SNAP_TIER3_MIN_TOP16_COVERAGE) {
+  if (top16 / total >= PALETTE_SNAP_TIER3_MIN_TOP16_COVERAGE) {
     return PALETTE_SNAP_TIER3_COLORS;
   }
   return null;
