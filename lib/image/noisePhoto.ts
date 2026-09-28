@@ -14,23 +14,24 @@
  *
  * The gate is conservative and fires only on noisy photos: the image
  * must hold many distinct RGB colors (at least 50000, so flat art and
- * thin line work are excluded) AND the median must rewrite at least
- * half of all pixels by more than 8 in some channel. Parity harness:
- * the gate fires only on noisy_photo across the 18-image suite
- * (noisy_photo rewrites 0.6976 of pixels; the next closest, photo.png,
- * rewrites 0.2965).
+ * thin line work are excluded) AND the median must rewrite at least a
+ * quarter of all pixels by more than 8 in some channel. Parity harness:
+ * the gate fires only on noisy_photo and photo.png across the 18-image
+ * suite (noisy_photo rewrites 0.6976 of pixels, photo.png 0.2965; the
+ * next closest, wikipedia_logo, rewrites 0.1500 and keeps the standard
+ * path).
  */
 
 import { noiseFraction } from "./unsharpMask";
 import { countUniqueRgb } from "./thinStructure";
 
 const NOISY_PHOTO_MIN_COLORS = 50000;
-const NOISY_PHOTO_MIN_REWRITE_FRACTION = 0.5;
+const NOISY_PHOTO_MIN_REWRITE_FRACTION = 0.25;
 
 /**
  * True when the image is a noisy photograph the 5x5 median would
  * damage: many distinct colors (photographic content) and the median
- * rewrites at least half of all pixels. `denoised` must be the 5x5
+ * rewrites at least a quarter of all pixels. `denoised` must be the 5x5
  * median of `raw` (already computed by the caller for the standard
  * path, so the detector costs no extra median).
  */
