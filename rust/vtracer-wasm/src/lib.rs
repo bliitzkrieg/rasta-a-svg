@@ -84,7 +84,7 @@ fn default_tiny_merge_max_pixel_spread() -> i32 {
 /// boundaries by ~1px on noisy content. The cluster is painted with its
 /// average color, so interior pixels stay within max_delta of the fill.
 fn default_flat_cluster_max_delta() -> i32 {
-    48
+    96
 }
 
 #[derive(Debug, Serialize)]
