@@ -174,10 +174,11 @@ fn color_cluster_is_flat(cluster: &ColorCluster, view: &ClustersView) -> bool {
     })
 }
 
-/// Minimum cluster area (px) for the exact pixel-corner walk. Smaller flat
-/// components are hurt by exact walks: the browser rasterizer mis-measures
-/// tiny stair-step boundaries, so they keep Polygon simplification.
-const EXACT_FLAT_MIN_AREA: usize = 10;
+/// Minimum cluster area (px) for the exact pixel-corner walk. The exact walk
+/// reproduces integer-corner binary art perfectly in the browser, and the
+/// harness rasterizer now measures thin features exactly (inset 0.25), so
+/// even single-pixel flat components take the exact walk.
+const EXACT_FLAT_MIN_AREA: usize = 1;
 
 /// Pick the path simplification mode for one color cluster. Small clusters
 /// get Polygon even when the user asked for Spline, to avoid spline overshoot
@@ -193,11 +194,9 @@ fn color_cluster_simplify_mode(
         && options.polygonMaxArea > 0
         && cluster.area() <= options.polygonMaxArea
     {
-        // Very small flat components (e.g. thin_lines dots, median 6px) are
-        // hurt by exact pixel-corner walks: the harness inset mis-measures
-        // tiny stair-steps. Use Polygon for them even when exactFlatPolygons
-        // is set. Larger flat components (e.g. halftone dots, median 89px)
-        // keep the exact walk.
+        // Flat components of any size take the exact pixel-corner walk when
+        // exactFlatPolygons is set: it reproduces binary art near-perfectly
+        // and the harness now measures thin features exactly.
         if options.exactFlatPolygons
             && color_cluster_is_flat(cluster, view)
             && cluster.area() >= EXACT_FLAT_MIN_AREA

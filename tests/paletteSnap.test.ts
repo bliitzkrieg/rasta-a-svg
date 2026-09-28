@@ -155,7 +155,16 @@ describe("gatedPaletteSnapTiered", () => {
       );
       const out = gatedPaletteSnapTiered(input, w, h);
       expect(out.length).toBe(expected.length);
-      expect(out).toEqual(expected);
+      // Manual byte loop: vitest's toEqual takes ~30s on 4M-element
+      // arrays, which blows the timeout; a loop is milliseconds.
+      let firstBad = -1;
+      for (let i = 0; i < out.length; i++) {
+        if (out[i] !== expected[i]) {
+          firstBad = i;
+          break;
+        }
+      }
+      expect(firstBad).toBe(-1);
     }
   }, 60000);
 });
