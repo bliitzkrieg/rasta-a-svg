@@ -112,7 +112,7 @@ describe("paletteSnapTier", () => {
   });
 
   it("selects tier 3 (k=16) for clustered mid-complexity", () => {
-    // wikipedia_logo: 277 unique colors, top-16 cover 48.7%.
+    // wikipedia_logo: 260 unique colors, top-16 cover 47.2%.
     const input = new Uint8ClampedArray(
       readFileSync("/tmp/ps_wikipedia_logo.png.in.rgba").buffer,
     );
@@ -159,7 +159,7 @@ describe("snapPreservedFraction", () => {
 describe("damageCheckedPaletteSnapTier", () => {
   it("drops a lossy tier-3 snap on noisy illustration shading", () => {
     // wikipedia_logo: raw tier is 16, but the snap to 16 preserves only
-    // ~96% of pixels within tolerance, so the damage check drops it.
+    // ~91% of pixels within tolerance, so the damage check drops it.
     const input = new Uint8ClampedArray(
       readFileSync("/tmp/ps_wikipedia_logo.png.in.rgba").buffer,
     );
