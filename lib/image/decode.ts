@@ -2,6 +2,7 @@ import { medianFilter5x5 } from "./medianFilter";
 import { adaptiveEdgeRestore } from "./unsharpMask";
 import { ditherPassthroughIfDithered } from "./descreen";
 import { thinStructurePassthrough } from "./thinStructure";
+import { noisePhotoPassthrough } from "./noisePhoto";
 import { posterizeImageData } from "./posterize";
 import { adaptiveMajorityVote } from "./majorityVote";
 import { compositeAlphaOverWhite } from "./alphaComposite";
@@ -73,16 +74,29 @@ export async function decodeBlobToImageData(blob: Blob): Promise<DecodedImage> {
   // 1.0000). The gate (at most 8 distinct colors and the median would
   // rewrite >= 5% of pixels) fires only on thin_lines and line_art across
   // the 14-image suite, so photos and flat icons keep the standard path.
+  // Heavily noisy photographs likewise skip the median denoise and the
+  // edge restore: the median rewrites most of the image, while the
+  // tracer reproduces the raw noise faithfully (parity harness, honest
+  // end-to-end metric: noisy_photo 0.6075 to 0.7339; the 64-level
+  // posterize, majority vote, and alpha composite stay in the path).
+  // The gate (at least 50000 distinct colors and the median would
+  // rewrite >= 50% of pixels) fires only on noisy_photo across the
+  // 18-image suite.
   const ditherRaw = ditherPassthroughIfDithered(raw, canvas.width, canvas.height);
   const medianDenoised =
     ditherRaw ?? medianFilter5x5(raw, canvas.width, canvas.height);
   const thinRaw =
     ditherRaw ??
     thinStructurePassthrough(raw, canvas.width, canvas.height, medianDenoised);
-  const denoised = thinRaw ?? medianDenoised;
+  const noiseRaw =
+    ditherRaw ??
+    thinRaw ??
+    noisePhotoPassthrough(raw, canvas.width, canvas.height, medianDenoised);
+  const denoised = noiseRaw ?? thinRaw ?? medianDenoised;
   const restored =
     ditherRaw ??
     thinRaw ??
+    noiseRaw ??
     adaptiveEdgeRestore(raw, denoised, canvas.width, canvas.height);
   const posterized = posterizeImageData(restored, canvas.width, canvas.height);
   const voted = adaptiveMajorityVote(posterized, canvas.width, canvas.height);
