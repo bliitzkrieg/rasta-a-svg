@@ -1,7 +1,7 @@
 "use client";
 
 import { Logo } from "./Logo";
-import { type DragEvent, useMemo, useRef, useState } from "react";
+import { type DragEvent, useEffect, useMemo, useRef, useState } from "react";
 import { PreviewPane } from "@/components/PreviewPane";
 import { QueueList } from "@/components/QueueList";
 import { ResultDetail } from "@/components/ResultDetail";
@@ -14,6 +14,7 @@ import { usePreviewUrls } from "@/hooks/usePreviewUrls";
 import { useServiceWorkerCleanup } from "@/hooks/useServiceWorkerCleanup";
 import { useTopbarHeight } from "@/hooks/useTopbarHeight";
 import { downloadAsZip, downloadString } from "@/lib/download";
+import { APP_VERSION } from "@/lib/version";
 import { trackEvent } from "@/lib/analytics";
 import { makeQueueItem, withUpdated } from "@/lib/queueUtils";
 import {
@@ -46,6 +47,10 @@ export default function ConverterApp() {
   useTopbarHeight(pageRef, topbarRef);
   const isOffline = useOnlineStatus();
   useServiceWorkerCleanup();
+
+  useEffect(() => {
+    console.log(`[PNG2SVG.IO] converter version ${APP_VERSION}`);
+  }, []);
 
   const selectedItem = useMemo(
     () => appState.queue.find((item) => item.id === appState.selectedId),
