@@ -75,14 +75,16 @@ export async function decodeBlobToImageData(blob: Blob): Promise<DecodedImage> {
   // 1.0000). The gate (at most 8 distinct colors and the median would
   // rewrite >= 5% of pixels) fires only on thin_lines and line_art across
   // the 14-image suite, so photos and flat icons keep the standard path.
-  // Heavily noisy photographs likewise skip the median denoise and the
-  // edge restore: the median rewrites most of the image, while the
-  // tracer reproduces the raw noise faithfully (parity harness, honest
-  // end-to-end metric: noisy_photo 0.6075 to 0.7339; the 64-level
-  // posterize, majority vote, and alpha composite stay in the path).
-  // The gate (at least 50000 distinct colors and the median would
-  // rewrite >= 25% of pixels) fires only on noisy_photo and photo.png
-  // across the 18-image suite.
+  // Heavily noisy or grain-heavy content likewise skips the median denoise
+  // and the edge restore: the median rewrites the grain the tracer would
+  // reproduce faithfully as raw content (parity harness, honest
+  // end-to-end metric: noisy_photo 0.6075 to 0.7339, luca_skeleton 0.8800
+  // to 0.8820; the 64-level posterize, majority vote, and alpha composite
+  // stay in the path). The gate (at least 50000 distinct colors and the
+  // median would rewrite >= 10% of pixels) fires on noisy_photo,
+  // photo.png, luca_skeleton, and wikipedia_logo across the 18-image
+  // suite (wikipedia_logo's outcome is unchanged: its soft-alpha gate
+  // already returned the raw pixels).
   // Flat artwork with soft anti-aliased edges likewise skips the median
   // denoise and the edge restore: anti-aliased fringe pixels carry
   // partial alpha and background-blended colors the median shifts,
