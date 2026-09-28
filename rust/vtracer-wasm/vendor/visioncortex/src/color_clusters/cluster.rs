@@ -14,6 +14,12 @@ pub struct Cluster {
     pub residue_sum: ColorSum,
     pub rect: BoundingRect,
     pub merged_into: ClusterIndex,
+    /// Per-channel min/max of member pixel RGB. Used to bound the color
+    /// spread a shallow merge may accumulate: chained shallow merges can
+    /// drift the average far from the member pixels, painting large
+    /// regions with a color none of them have.
+    pub min_rgb: [u8; 3],
+    pub max_rgb: [u8; 3],
 }
 
 impl Cluster {
@@ -22,9 +28,38 @@ impl Cluster {
     }
 
     pub fn add(&mut self, i: u32, color: &Color, x: i32, y: i32) {
+        if self.indices.is_empty() {
+            self.min_rgb = [color.r, color.g, color.b];
+            self.max_rgb = [color.r, color.g, color.b];
+        } else {
+            self.min_rgb[0] = self.min_rgb[0].min(color.r);
+            self.min_rgb[1] = self.min_rgb[1].min(color.g);
+            self.min_rgb[2] = self.min_rgb[2].min(color.b);
+            self.max_rgb[0] = self.max_rgb[0].max(color.r);
+            self.max_rgb[1] = self.max_rgb[1].max(color.g);
+            self.max_rgb[2] = self.max_rgb[2].max(color.b);
+        }
         self.indices.push(i);
         self.sum.add(color);
         self.rect.add_x_y(x, y);
+    }
+
+    /// Sum of per-channel ranges (max minus min) of member pixel RGB.
+    pub fn color_spread(&self) -> i32 {
+        (self.max_rgb[0] as i32 - self.min_rgb[0] as i32)
+            + (self.max_rgb[1] as i32 - self.min_rgb[1] as i32)
+            + (self.max_rgb[2] as i32 - self.min_rgb[2] as i32)
+    }
+
+    /// Sum of per-channel ranges the cluster would have after absorbing
+    /// `other`'s pixels.
+    pub fn merged_spread(&self, other: &Cluster) -> i32 {
+        let mut spread = 0i32;
+        for c in 0..3 {
+            spread += (self.max_rgb[c].max(other.max_rgb[c]) as i32)
+                - (self.min_rgb[c].min(other.min_rgb[c]) as i32);
+        }
+        spread
     }
 
     pub fn area(&self) -> usize {

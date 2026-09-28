@@ -51,6 +51,8 @@ struct TraceOptions {
     tinyMergeMaxPixelSpread: i32,
     #[serde(default = "default_flat_cluster_max_delta")]
     flatClusterMaxDelta: i32,
+    #[serde(default = "default_max_merge_spread")]
+    maxMergeSpread: i32,
 }
 
 fn default_tiny_merge_max_area() -> usize {
@@ -85,6 +87,15 @@ fn default_tiny_merge_max_pixel_spread() -> i32 {
 /// average color, so interior pixels stay within max_delta of the fill.
 fn default_flat_cluster_max_delta() -> i32 {
     96
+}
+
+/// Maximum color spread (sum of per-channel max-minus-min of member
+/// pixel RGB) a stage-2 shallow merge may produce; merges that would
+/// stretch the combined spread past this bound deepen the patch into
+/// its own layer instead. Bounds the color drift chained shallow
+/// merges accumulate on grainy content.
+fn default_max_merge_spread() -> i32 {
+    192
 }
 
 #[derive(Debug, Serialize)]
@@ -363,6 +374,7 @@ fn run_color_trace(
             tiny_merge_max_target_area: options.tinyMergeMaxTargetArea,
             tiny_merge_max_neighbor_spread: options.tinyMergeMaxNeighborSpread,
             tiny_merge_max_pixel_spread: options.tinyMergeMaxPixelSpread,
+            max_merge_spread: options.maxMergeSpread,
         },
         image,
     );
@@ -396,6 +408,7 @@ fn run_color_trace(
             tiny_merge_max_target_area: 0,
             tiny_merge_max_neighbor_spread: 0,
             tiny_merge_max_pixel_spread: 0,
+            max_merge_spread: 0,
         },
         image,
     );

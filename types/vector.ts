@@ -31,6 +31,7 @@ export interface ConversionSettings {
   tinyMergeMaxNeighborSpread: number;
   tinyMergeMaxPixelSpread: number;
   flatClusterMaxDelta: number;
+  maxMergeSpread: number;
 }
 
 export interface VectorPoint {

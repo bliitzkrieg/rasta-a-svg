@@ -24,6 +24,7 @@ pub struct RunnerConfig {
     pub tiny_merge_max_target_area: usize,
     pub tiny_merge_max_neighbor_spread: i32,
     pub tiny_merge_max_pixel_spread: i32,
+    pub max_merge_spread: i32,
 }
 
 impl Default for RunnerConfig {
@@ -46,6 +47,7 @@ impl Default for RunnerConfig {
             tiny_merge_max_target_area: 0,
             tiny_merge_max_neighbor_spread: 0,
             tiny_merge_max_pixel_spread: 0,
+            max_merge_spread: 0,
         }
     }
 }
@@ -97,6 +99,7 @@ impl Runner {
             tiny_merge_max_target_area,
             tiny_merge_max_neighbor_spread,
             tiny_merge_max_pixel_spread,
+            max_merge_spread,
         } = self.config;
 
         assert!(is_same_color_a < 8);
@@ -114,6 +117,7 @@ impl Runner {
             .tiny_merge_max_target_area(tiny_merge_max_target_area)
             .tiny_merge_max_neighbor_spread(tiny_merge_max_neighbor_spread)
             .tiny_merge_max_pixel_spread(tiny_merge_max_pixel_spread)
+            .max_merge_spread(max_merge_spread)
             .same(move |a: Color, b: Color| {
                 color_same(a, b, is_same_color_a, is_same_color_b)
             })

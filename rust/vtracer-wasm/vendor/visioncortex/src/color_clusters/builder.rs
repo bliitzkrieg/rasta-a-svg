@@ -49,6 +49,16 @@ pub struct BuilderConfig {
     /// to the target. A noise speckle or linework fragment is nearly
     /// uniform, so its spread is narrow. 0 disables the gate.
     pub(crate) tiny_merge_max_pixel_spread: i32,
+    /// Max color spread (sum over channels of max-minus-min of member
+    /// pixel RGB) a stage-2 shallow merge may produce. When merging the
+    /// patch into its best-diff neighbor would stretch the combined
+    /// spread past this bound, the patch deepens into its own layer
+    /// instead. This stops chained shallow merges from drifting the
+    /// average far from the member pixels (the noisy-photo grain
+    /// mechanism: 1px speckles absorbed into unlike neighbors, painting
+    /// their pixels with a color none of them have). 0 disables the
+    /// bound.
+    pub(crate) max_merge_spread: i32,
 }
 
 impl Default for BuilderConfig {
@@ -65,6 +75,7 @@ impl Default for BuilderConfig {
             tiny_merge_max_target_area: 0,
             tiny_merge_max_neighbor_spread: 0,
             tiny_merge_max_pixel_spread: 0,
+            max_merge_spread: 0,
         }
     }
 }
@@ -146,6 +157,7 @@ impl<C, D, P, H> Builder<C, D, P, H> {
     config_setter!(tiny_merge_max_target_area, usize);
     config_setter!(tiny_merge_max_neighbor_spread, i32);
     config_setter!(tiny_merge_max_pixel_spread, i32);
+    config_setter!(max_merge_spread, i32);
 
     /// Sets the "same color" predicate, changing the `C` type parameter.
     pub fn same<C2>(self, same: C2) -> Builder<C2, D, P, H>
@@ -227,6 +239,7 @@ where
             tiny_merge_max_target_area: self.conf.tiny_merge_max_target_area,
             tiny_merge_max_neighbor_spread: self.conf.tiny_merge_max_neighbor_spread,
             tiny_merge_max_pixel_spread: self.conf.tiny_merge_max_pixel_spread,
+            max_merge_spread: self.conf.max_merge_spread,
         }
     }
 }
@@ -299,6 +312,7 @@ pub struct BuilderImpl<C, D, P, H> {
     tiny_merge_max_target_area: usize,
     tiny_merge_max_neighbor_spread: i32,
     tiny_merge_max_pixel_spread: i32,
+    max_merge_spread: i32,
 }
 
 impl<C, D, P, H> BuilderImpl<C, D, P, H>
@@ -713,7 +727,19 @@ where
             let target = infos[0].index;
 
             let deepen = if self.hierarchical == HIERARCHICAL_MAX {
-                (self.deepen)(&self.view(), self.get_cluster(index), &infos)
+                let d = (self.deepen)(&self.view(), self.get_cluster(index), &infos);
+                if d || self.max_merge_spread <= 0 {
+                    d
+                } else {
+                    // Spread-bounded shallow merging: refuse a shallow
+                    // merge that would stretch the combined color spread
+                    // past the bound; the patch deepens into its own
+                    // layer instead, keeping a fill color close to its own
+                    // pixels.
+                    let patch = self.get_cluster(index);
+                    let target_cluster = self.get_cluster(target);
+                    patch.merged_spread(target_cluster) > self.max_merge_spread
+                }
             } else {
                 false
             };
@@ -774,12 +800,16 @@ where
         let sum = self.clusters[from.0 as usize].sum;
         let rect = self.clusters[from.0 as usize].rect;
         let indices = self.clusters[from.0 as usize].indices.clone();
+        let min_rgb = self.clusters[from.0 as usize].min_rgb;
+        let max_rgb = self.clusters[from.0 as usize].max_rgb;
 
         self.combine_clusters(from, to);
 
         self.clusters[from.0 as usize].sum = sum;
         self.clusters[from.0 as usize].rect = rect;
         self.clusters[from.0 as usize].indices = indices;
+        self.clusters[from.0 as usize].min_rgb = min_rgb;
+        self.clusters[from.0 as usize].max_rgb = max_rgb;
     }
 
     fn combine_clusters(&mut self, from: ClusterIndex, to: ClusterIndex) {
@@ -787,12 +817,29 @@ where
             self.cluster_indices[i as usize] = to;
         }
 
+        let from_empty = self.clusters[from.0 as usize].indices.is_empty();
+        let to_empty = self.clusters[to.0 as usize].indices.is_empty();
+        let from_min = self.clusters[from.0 as usize].min_rgb;
+        let from_max = self.clusters[from.0 as usize].max_rgb;
+
         let mut indices = std::mem::take(&mut self.clusters[from.0 as usize].indices);
         self.clusters[to.0 as usize].indices.append(&mut indices);
         let sum = self.clusters[from.0 as usize].sum;
         let rect = self.clusters[from.0 as usize].rect;
-        self.clusters[to.0 as usize].sum.merge(&sum);
-        self.clusters[to.0 as usize].rect.merge(rect);
+        let to_cluster = &mut self.clusters[to.0 as usize];
+        to_cluster.sum.merge(&sum);
+        to_cluster.rect.merge(rect);
+        if !from_empty {
+            if to_empty {
+                to_cluster.min_rgb = from_min;
+                to_cluster.max_rgb = from_max;
+            } else {
+                for c in 0..3 {
+                    to_cluster.min_rgb[c] = to_cluster.min_rgb[c].min(from_min[c]);
+                    to_cluster.max_rgb[c] = to_cluster.max_rgb[c].max(from_max[c]);
+                }
+            }
+        }
         self.clusters[from.0 as usize].sum.clear();
         self.clusters[from.0 as usize].rect.clear();
     }

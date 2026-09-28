@@ -26,6 +26,7 @@ export interface VTracerOptions {
   tinyMergeMaxNeighborSpread: number;
   tinyMergeMaxPixelSpread: number;
   flatClusterMaxDelta: number;
+  maxMergeSpread: number;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -78,5 +79,6 @@ export function toVTracerOptions(
       0,
       255,
     ),
+    maxMergeSpread: clamp(Math.round(settings.maxMergeSpread), 0, 765),
   };
 }
