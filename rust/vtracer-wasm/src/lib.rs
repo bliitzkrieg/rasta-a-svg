@@ -37,6 +37,54 @@ struct TraceOptions {
     exactFlatPolygons: bool,
     spliceThreshold: f64,
     mode: String,
+    #[serde(default = "default_tiny_merge_max_area")]
+    tinyMergeMaxArea: usize,
+    #[serde(default = "default_tiny_merge_max_diff")]
+    tinyMergeMaxDiff: i32,
+    #[serde(default = "default_tiny_merge_min_target_area")]
+    tinyMergeMinTargetArea: usize,
+    #[serde(default = "default_tiny_merge_max_target_area")]
+    tinyMergeMaxTargetArea: usize,
+    #[serde(default = "default_tiny_merge_max_neighbor_spread")]
+    tinyMergeMaxNeighborSpread: i32,
+    #[serde(default = "default_tiny_merge_max_pixel_spread")]
+    tinyMergeMaxPixelSpread: i32,
+    #[serde(default = "default_flat_cluster_max_delta")]
+    flatClusterMaxDelta: i32,
+}
+
+fn default_tiny_merge_max_area() -> usize {
+    0
+}
+
+fn default_tiny_merge_max_diff() -> i32 {
+    0
+}
+
+fn default_tiny_merge_min_target_area() -> usize {
+    0
+}
+
+fn default_tiny_merge_max_target_area() -> usize {
+    0
+}
+
+fn default_tiny_merge_max_neighbor_spread() -> i32 {
+    0
+}
+
+fn default_tiny_merge_max_pixel_spread() -> i32 {
+    0
+}
+
+/// Maximum per-channel deviation from the cluster's first pixel for the
+/// cluster to take the exact pixel-corner walk. Defaults to 2 (the
+/// original FLAT_CLUSTER_DELTA); raising it lets low-variation clusters
+/// skip the staircase-cutting polygon simplification, which dithers
+/// boundaries by ~1px on noisy content. The cluster is painted with its
+/// average color, so interior pixels stay within max_delta of the fill.
+fn default_flat_cluster_max_delta() -> i32 {
+    48
 }
 
 #[derive(Debug, Serialize)]
@@ -145,15 +193,12 @@ fn default_exact_flat_polygons() -> bool {
     false
 }
 
-/// Maximum per-channel difference for a cluster to count as flat.
-const FLAT_CLUSTER_DELTA: i16 = 2;
-
-/// True when every pixel in the cluster is within FLAT_CLUSTER_DELTA of the
+/// True when every pixel in the cluster is within max_delta of the
 /// cluster's first pixel on every channel. Gates the exact pixel-corner
-/// walk to binary art (halftone dots, solid fills) where it is near-perfect,
-/// keeping the smoothed polygon for anti-aliased clusters where smoothing
-/// mimics the soft edge better.
-fn color_cluster_is_flat(cluster: &ColorCluster, view: &ClustersView) -> bool {
+/// walk to low-variation clusters (binary art, solid fills, low-amplitude
+/// noise) where it is near-perfect, keeping the smoothed polygon for
+/// high-variation clusters where smoothing mimics the soft edge better.
+fn color_cluster_is_flat(cluster: &ColorCluster, view: &ClustersView, max_delta: i32) -> bool {
     let mut indices = cluster.iter();
     let first_index = match indices.next() {
         Some(index) => *index,
@@ -165,10 +210,11 @@ fn color_cluster_is_flat(cluster: &ColorCluster, view: &ClustersView) -> bool {
     };
     indices.all(|index| match view.get_pixel_at_index(*index) {
         Some(color) => {
-            (color.r as i16 - first.r as i16).abs() <= FLAT_CLUSTER_DELTA
-                && (color.g as i16 - first.g as i16).abs() <= FLAT_CLUSTER_DELTA
-                && (color.b as i16 - first.b as i16).abs() <= FLAT_CLUSTER_DELTA
-                && (color.a as i16 - first.a as i16).abs() <= FLAT_CLUSTER_DELTA
+            let d = max_delta as i16;
+            (color.r as i16 - first.r as i16).abs() <= d
+                && (color.g as i16 - first.g as i16).abs() <= d
+                && (color.b as i16 - first.b as i16).abs() <= d
+                && (color.a as i16 - first.a as i16).abs() <= d
         }
         None => false,
     })
@@ -198,7 +244,7 @@ fn color_cluster_simplify_mode(
         // exactFlatPolygons is set: it reproduces binary art near-perfectly
         // and the harness now measures thin features exactly.
         if options.exactFlatPolygons
-            && color_cluster_is_flat(cluster, view)
+            && color_cluster_is_flat(cluster, view, options.flatClusterMaxDelta)
             && cluster.area() >= EXACT_FLAT_MIN_AREA
         {
             PathSimplifyMode::None
@@ -311,6 +357,12 @@ fn run_color_trace(
             } else {
                 KeyingAction::Discard
             },
+            tiny_merge_max_area: options.tinyMergeMaxArea,
+            tiny_merge_max_diff: options.tinyMergeMaxDiff,
+            tiny_merge_min_target_area: options.tinyMergeMinTargetArea,
+            tiny_merge_max_target_area: options.tinyMergeMaxTargetArea,
+            tiny_merge_max_neighbor_spread: options.tinyMergeMaxNeighborSpread,
+            tiny_merge_max_pixel_spread: options.tinyMergeMaxPixelSpread,
         },
         image,
     );
@@ -338,6 +390,12 @@ fn run_color_trace(
             hollow_neighbours: 0,
             key_color: Default::default(),
             keying_action: KeyingAction::Discard,
+            tiny_merge_max_area: 0,
+            tiny_merge_max_diff: 0,
+            tiny_merge_min_target_area: 0,
+            tiny_merge_max_target_area: 0,
+            tiny_merge_max_neighbor_spread: 0,
+            tiny_merge_max_pixel_spread: 0,
         },
         image,
     );

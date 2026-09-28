@@ -13,4 +13,11 @@ export const DEFAULT_SETTINGS: ConversionSettings = {
   pathPrecision: 3,
   polygonMaxArea: 1600,
   exactFlatPolygons: true,
+  tinyMergeMaxArea: 0,
+  tinyMergeMaxDiff: 0,
+  tinyMergeMinTargetArea: 0,
+  tinyMergeMaxTargetArea: 0,
+  tinyMergeMaxNeighborSpread: 0,
+  tinyMergeMaxPixelSpread: 0,
+  flatClusterMaxDelta: 48,
 };

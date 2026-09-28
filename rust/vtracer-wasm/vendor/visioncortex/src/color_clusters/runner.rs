@@ -18,6 +18,12 @@ pub struct RunnerConfig {
     pub hollow_neighbours: usize,
     pub key_color: Color,
     pub keying_action: KeyingAction,
+    pub tiny_merge_max_area: usize,
+    pub tiny_merge_max_diff: i32,
+    pub tiny_merge_min_target_area: usize,
+    pub tiny_merge_max_target_area: usize,
+    pub tiny_merge_max_neighbor_spread: i32,
+    pub tiny_merge_max_pixel_spread: i32,
 }
 
 impl Default for RunnerConfig {
@@ -34,6 +40,12 @@ impl Default for RunnerConfig {
             hollow_neighbours: 1,
             key_color: Color::default(),
             keying_action: KeyingAction::default(),
+            tiny_merge_max_area: 0,
+            tiny_merge_max_diff: 0,
+            tiny_merge_min_target_area: 0,
+            tiny_merge_max_target_area: 0,
+            tiny_merge_max_neighbor_spread: 0,
+            tiny_merge_max_pixel_spread: 0,
         }
     }
 }
@@ -79,6 +91,12 @@ impl Runner {
             hollow_neighbours,
             key_color,
             keying_action,
+            tiny_merge_max_area,
+            tiny_merge_max_diff,
+            tiny_merge_min_target_area,
+            tiny_merge_max_target_area,
+            tiny_merge_max_neighbor_spread,
+            tiny_merge_max_pixel_spread,
         } = self.config;
 
         assert!(is_same_color_a < 8);
@@ -90,6 +108,12 @@ impl Runner {
             .key(key_color)
             .keying_action(keying_action)
             .batch_size(batch_size as u32)
+            .tiny_merge_max_area(tiny_merge_max_area)
+            .tiny_merge_max_diff(tiny_merge_max_diff)
+            .tiny_merge_min_target_area(tiny_merge_min_target_area)
+            .tiny_merge_max_target_area(tiny_merge_max_target_area)
+            .tiny_merge_max_neighbor_spread(tiny_merge_max_neighbor_spread)
+            .tiny_merge_max_pixel_spread(tiny_merge_max_pixel_spread)
             .same(move |a: Color, b: Color| {
                 color_same(a, b, is_same_color_a, is_same_color_b)
             })

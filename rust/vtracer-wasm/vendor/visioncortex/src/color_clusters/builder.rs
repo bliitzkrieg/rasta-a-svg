@@ -17,6 +17,38 @@ pub struct BuilderConfig {
     pub(crate) batch_size: u32,
     pub(crate) key: Color,
     pub(crate) keying_action: KeyingAction,
+    /// Max cluster area (px) for tiny-cluster absorption at the stage 1 -> 2
+    /// transition. 0 disables the pass.
+    pub(crate) tiny_merge_max_area: usize,
+    /// Max average-color difference (sum of abs channel diffs) for a tiny
+    /// cluster to be absorbed into a 4-neighbor.
+    pub(crate) tiny_merge_max_diff: i32,
+    /// Minimum area (px) of the absorption target. 0 disables the
+    /// restriction. Requiring a large target keeps the pass to splinters
+    /// absorbed into established regions; without it, small gradient-band
+    /// clusters merge into each other and smooth transitions collapse.
+    pub(crate) tiny_merge_min_target_area: usize,
+    /// Maximum area (px) of the absorption target. 0 disables the
+    /// restriction. Capping the target keeps the pass to fragment-to-fragment
+    /// consolidation (noise splinters and linework fragments merging with
+    /// each other); without it, soft-alpha fringe clusters get absorbed
+    /// into large flat regions and soft edges turn hard.
+    pub(crate) tiny_merge_max_target_area: usize,
+    /// Max neighbor-color spread (sum over channels of max-minus-min of the
+    /// distinct neighbors' average colors) for a tiny cluster to be absorbed.
+    /// A tiny cluster sitting on a color boundary ("bridge", e.g. a gradient
+    /// band step or a soft-alpha fringe) touches neighbors whose average
+    /// colors span a wide range; an interior splinter (noise speckle,
+    /// linework fragment) is surrounded by one similar color. 0 disables the
+    /// gate.
+    pub(crate) tiny_merge_max_neighbor_spread: i32,
+    /// Max own-pixel color spread (sum over channels of max-minus-min of the
+    /// tiny cluster's own pixels) for absorption. A soft-alpha fringe
+    /// cluster is a blend ramp: its pixels run from one region's color to
+    /// the other's, so its spread is wide even when its average sits close
+    /// to the target. A noise speckle or linework fragment is nearly
+    /// uniform, so its spread is narrow. 0 disables the gate.
+    pub(crate) tiny_merge_max_pixel_spread: i32,
 }
 
 impl Default for BuilderConfig {
@@ -27,6 +59,12 @@ impl Default for BuilderConfig {
             batch_size: 10000,
             key: Color::default(),
             keying_action: KeyingAction::default(),
+            tiny_merge_max_area: 0,
+            tiny_merge_max_diff: 0,
+            tiny_merge_min_target_area: 0,
+            tiny_merge_max_target_area: 0,
+            tiny_merge_max_neighbor_spread: 0,
+            tiny_merge_max_pixel_spread: 0,
         }
     }
 }
@@ -102,6 +140,12 @@ impl<C, D, P, H> Builder<C, D, P, H> {
     config_setter!(batch_size, u32);
     config_setter!(key, Color);
     config_setter!(keying_action, KeyingAction);
+    config_setter!(tiny_merge_max_area, usize);
+    config_setter!(tiny_merge_max_diff, i32);
+    config_setter!(tiny_merge_min_target_area, usize);
+    config_setter!(tiny_merge_max_target_area, usize);
+    config_setter!(tiny_merge_max_neighbor_spread, i32);
+    config_setter!(tiny_merge_max_pixel_spread, i32);
 
     /// Sets the "same color" predicate, changing the `C` type parameter.
     pub fn same<C2>(self, same: C2) -> Builder<C2, D, P, H>
@@ -177,6 +221,12 @@ where
             stage: 1,
             iteration: 0,
             next_index: ClusterIndex(1),
+            tiny_merge_max_area: self.conf.tiny_merge_max_area,
+            tiny_merge_max_diff: self.conf.tiny_merge_max_diff,
+            tiny_merge_min_target_area: self.conf.tiny_merge_min_target_area,
+            tiny_merge_max_target_area: self.conf.tiny_merge_max_target_area,
+            tiny_merge_max_neighbor_spread: self.conf.tiny_merge_max_neighbor_spread,
+            tiny_merge_max_pixel_spread: self.conf.tiny_merge_max_pixel_spread,
         }
     }
 }
@@ -243,6 +293,12 @@ pub struct BuilderImpl<C, D, P, H> {
     stage: u32,
     iteration: u32,
     next_index: ClusterIndex,
+    tiny_merge_max_area: usize,
+    tiny_merge_max_diff: i32,
+    tiny_merge_min_target_area: usize,
+    tiny_merge_max_target_area: usize,
+    tiny_merge_max_neighbor_spread: i32,
+    tiny_merge_max_pixel_spread: i32,
 }
 
 impl<C, D, P, H> BuilderImpl<C, D, P, H>
@@ -257,6 +313,12 @@ where
             1 => {
                 if self.stage_1() {
                     if self.hierarchical != 0 {
+                        // Stage 1 -> 2 transition: clusters are still flat
+                        // (no holes, no depth). Absorb tiny splinter clusters
+                        // into similar neighbors before the deepen walk, then
+                        // rebuild the stage-2 area index on the merged state.
+                        self.absorb_tiny_clusters();
+                        self.prepare_stage_2();
                         self.stage += 1;
                         self.iteration = 0;
                     } else {
@@ -414,7 +476,6 @@ where
 
         self.iteration += batch_size;
         if self.iteration as usize >= self.cluster_indices.len() {
-            self.prepare_stage_2();
             true
         } else {
             false
@@ -432,6 +493,143 @@ where
         }
         output.sort_by_key(|c| c.1 as u64 * 65535 + c.0.0 as u64);
         output.iter().for_each(|c| self.clusters_output.push(c.0));
+    }
+
+    /// Absorb tiny splinter clusters into their most similar 4-neighbor.
+    ///
+    /// Called once at the stage 1 -> 2 transition, while clusters are still
+    /// flat (no holes, no depth). Every cluster with area at or below
+    /// tiny_merge_max_area is merged into the adjacent cluster whose average
+    /// RGB is closest, provided the sum-of-abs-channel-diffs of the two
+    /// averages is under tiny_merge_max_diff. Merging uses the existing
+    /// merge_cluster_into with deepen=false, so pixels and color sums move
+    /// without hierarchy bookkeeping; merged-away clusters are dropped from
+    /// the output by the sum.counter > 0 retain in result().
+    ///
+    /// This consolidates the ~19k single-path linework splinters and noise
+    /// speckles that stage 1 produces on JPEG-noisy cartoon art and photos:
+    /// instead of one independent boundary walk per splinter (each placing
+    /// its boundary 1-2px off), the merged region gets a single coherent
+    /// walk. A no-op when tiny_merge_max_area is 0.
+    ///
+    /// The bridge-vs-outlier gate: when tiny_merge_max_neighbor_spread is
+    /// positive, a tiny cluster whose distinct neighbors' average colors
+    /// span a range wider than the spread budget is left alone. Such a
+    /// cluster sits on a color boundary (a gradient-band step, a soft-alpha
+    /// fringe between two regions); merging it collapses legitimate
+    /// structure. An interior splinter is surrounded by one similar color
+    /// and shows a narrow spread, so it still merges.
+    ///
+    /// The max-target-area gate: when tiny_merge_max_target_area is
+    /// positive, neighbors larger than the cap are not eligible targets.
+    /// Fragment-to-fragment consolidation (the skeleton win) uses small
+    /// targets; fringe-into-flat merges (the wikipedia regression) use
+    /// large ones.
+    fn absorb_tiny_clusters(&mut self) {
+        let max_area = self.tiny_merge_max_area;
+        let max_diff = self.tiny_merge_max_diff;
+        let min_target_area = self.tiny_merge_min_target_area;
+        let max_target_area = self.tiny_merge_max_target_area;
+        let max_spread = self.tiny_merge_max_neighbor_spread;
+        let max_pixel_spread = self.tiny_merge_max_pixel_spread;
+        if max_area == 0 || max_diff <= 0 {
+            return;
+        }
+        let width = self.width as i32;
+        let height = self.height as i32;
+        let num_clusters = self.clusters.len();
+        const OFFSETS: [(i32, i32); 4] = [(1, 0), (-1, 0), (0, 1), (0, -1)];
+        for ci in 1..num_clusters {
+            let area = self.clusters[ci].area();
+            if area == 0 || area > max_area {
+                continue;
+            }
+            let avg = average_cluster_color(&self.clusters[ci]);
+            let indices = self.clusters[ci].indices.clone();
+            if max_pixel_spread > 0 {
+                // Pixel-spread gate: skip clusters whose own pixels span a
+                // wider color range than the budget. Blend-ramp clusters
+                // (soft-alpha fringes) have wide pixel spreads even when
+                // their average sits close to a neighbor; noise speckles
+                // and linework fragments are nearly uniform.
+                let mut pr = (i32::MAX, i32::MIN);
+                let mut pg = (i32::MAX, i32::MIN);
+                let mut pb = (i32::MAX, i32::MIN);
+                for &i in indices.iter() {
+                    let b = (i as usize) * 4;
+                    let r = self.pixels[b] as i32;
+                    let g = self.pixels[b + 1] as i32;
+                    let bl = self.pixels[b + 2] as i32;
+                    pr = (pr.0.min(r), pr.1.max(r));
+                    pg = (pg.0.min(g), pg.1.max(g));
+                    pb = (pb.0.min(bl), pb.1.max(bl));
+                }
+                if (pr.1 - pr.0) + (pg.1 - pg.0) + (pb.1 - pb.0) > max_pixel_spread {
+                    continue;
+                }
+            }
+            let mut tried: Vec<u32> = Vec::new();
+            let mut best: Option<u32> = None;
+            let mut best_diff = max_diff;
+            let mut spread_r = (i32::MAX, i32::MIN);
+            let mut spread_g = (i32::MAX, i32::MIN);
+            let mut spread_b = (i32::MAX, i32::MIN);
+            let mut spread_count = 0u32;
+            for &i in indices.iter() {
+                let x = (i as i32) % width;
+                let y = (i as i32) / width;
+                for (dx, dy) in OFFSETS.iter() {
+                    let nx = x + dx;
+                    let ny = y + dy;
+                    if nx < 0 || ny < 0 || nx >= width || ny >= height {
+                        continue;
+                    }
+                    let ni = self.cluster_indices[(ny * width + nx) as usize].0;
+                    if ni == ci as u32 || tried.contains(&ni) {
+                        continue;
+                    }
+                    tried.push(ni);
+                    let narea = self.clusters[ni as usize].area();
+                    if narea == 0
+                        || narea < min_target_area
+                        || (max_target_area > 0 && narea > max_target_area)
+                    {
+                        continue;
+                    }
+                    let navg = average_cluster_color(&self.clusters[ni as usize]);
+                    if max_spread > 0 {
+                        spread_r = (spread_r.0.min(navg.0), spread_r.1.max(navg.0));
+                        spread_g = (spread_g.0.min(navg.1), spread_g.1.max(navg.1));
+                        spread_b = (spread_b.0.min(navg.2), spread_b.1.max(navg.2));
+                        spread_count += 1;
+                    }
+                    let diff = (avg.0 - navg.0).abs()
+                        + (avg.1 - navg.1).abs()
+                        + (avg.2 - navg.2).abs();
+                    if diff < best_diff {
+                        best_diff = diff;
+                        best = Some(ni);
+                    }
+                }
+            }
+            if max_spread > 0
+                && spread_count > 0
+                && (spread_r.1 - spread_r.0)
+                    + (spread_g.1 - spread_g.0)
+                    + (spread_b.1 - spread_b.0)
+                    > max_spread
+            {
+                continue;
+            }
+            if let Some(target) = best {
+                self.merge_cluster_into(
+                    ClusterIndex(ci as u32),
+                    ClusterIndex(target),
+                    false,
+                    false,
+                );
+            }
+        }
     }
 
     fn prepare_stage_2(&mut self) {
@@ -628,4 +826,15 @@ where
             None
         }
     }
+}
+
+/// Average RGB of a cluster's pixels, as (r, g, b). Used to pick the most
+/// similar absorption target for tiny clusters.
+fn average_cluster_color(cluster: &Cluster) -> (i32, i32, i32) {
+    let counter = cluster.sum.counter.max(1) as i32;
+    (
+        cluster.sum.r as i32 / counter,
+        cluster.sum.g as i32 / counter,
+        cluster.sum.b as i32 / counter,
+    )
 }

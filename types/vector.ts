@@ -24,6 +24,13 @@ export interface ConversionSettings {
   pathPrecision: number;
   polygonMaxArea: number;
   exactFlatPolygons: boolean;
+  tinyMergeMaxArea: number;
+  tinyMergeMaxDiff: number;
+  tinyMergeMinTargetArea: number;
+  tinyMergeMaxTargetArea: number;
+  tinyMergeMaxNeighborSpread: number;
+  tinyMergeMaxPixelSpread: number;
+  flatClusterMaxDelta: number;
 }
 
 export interface VectorPoint {

@@ -19,6 +19,13 @@ export interface VTracerOptions {
   mode: VTracerMode;
   polygonMaxArea: number;
   exactFlatPolygons: boolean;
+  tinyMergeMaxArea: number;
+  tinyMergeMaxDiff: number;
+  tinyMergeMinTargetArea: number;
+  tinyMergeMaxTargetArea: number;
+  tinyMergeMaxNeighborSpread: number;
+  tinyMergeMaxPixelSpread: number;
+  flatClusterMaxDelta: number;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -44,5 +51,32 @@ export function toVTracerOptions(
     mode: settings.mode,
     polygonMaxArea: clamp(Math.round(settings.polygonMaxArea), 0, 65536),
     exactFlatPolygons: settings.exactFlatPolygons === true,
+    tinyMergeMaxArea: clamp(Math.round(settings.tinyMergeMaxArea), 0, 65536),
+    tinyMergeMaxDiff: clamp(Math.round(settings.tinyMergeMaxDiff), 0, 765),
+    tinyMergeMinTargetArea: clamp(
+      Math.round(settings.tinyMergeMinTargetArea),
+      0,
+      65536,
+    ),
+    tinyMergeMaxTargetArea: clamp(
+      Math.round(settings.tinyMergeMaxTargetArea),
+      0,
+      65536,
+    ),
+    tinyMergeMaxNeighborSpread: clamp(
+      Math.round(settings.tinyMergeMaxNeighborSpread),
+      0,
+      765,
+    ),
+    tinyMergeMaxPixelSpread: clamp(
+      Math.round(settings.tinyMergeMaxPixelSpread),
+      0,
+      765,
+    ),
+    flatClusterMaxDelta: clamp(
+      Math.round(settings.flatClusterMaxDelta),
+      0,
+      255,
+    ),
   };
 }
