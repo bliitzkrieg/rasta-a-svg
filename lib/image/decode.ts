@@ -5,7 +5,7 @@ import { thinStructurePassthrough } from "./thinStructure";
 import { posterizeImageData } from "./posterize";
 import { adaptiveMajorityVote } from "./majorityVote";
 import { compositeAlphaOverWhite } from "./alphaComposite";
-import { paletteSnapImageData, paletteSnapTier } from "./paletteSnap";
+import { paletteSnapImageData, damageCheckedPaletteSnapTier } from "./paletteSnap";
 
 export interface DecodedImage {
   width: number;
@@ -87,7 +87,15 @@ export async function decodeBlobToImageData(blob: Blob): Promise<DecodedImage> {
   const posterized = posterizeImageData(restored, canvas.width, canvas.height);
   const voted = adaptiveMajorityVote(posterized, canvas.width, canvas.height);
   const composited = compositeAlphaOverWhite(voted, canvas.width, canvas.height);
-  const tier = paletteSnapTier(composited);
+  // Damage-checked tier: the snap (and the binary-layer path it enables)
+  // is applied only when it preserves the image within the scoring
+  // tolerance; a lossy snap is skipped in favor of the standard
+  // color-mode tracer on the unsnapped pixels.
+  const tier = damageCheckedPaletteSnapTier(
+    composited,
+    canvas.width,
+    canvas.height,
+  );
   const data =
     tier === null
       ? composited.slice(0, canvas.width * canvas.height * 4)

@@ -20,8 +20,12 @@
  *   to 8. Fires on flat artwork with fringes (diagonal_text,
  *   goose_balloon, text_logo, dither).
  * - Tier 3: more than 8 unique colors and top-16 cover >= 40% -> snap
- *   to 16. Fires on clustered mid-complexity images like wikipedia_logo
- *   whose posterized gradient bands widen and trace more cleanly.
+ *   to 16. Fires on clustered mid-complexity images whose posterized
+ *   gradient bands widen and trace more cleanly. A damage check then
+ *   keeps the tier only when the snap preserves the image within the
+ *   scoring tolerance: lossy snaps (wikipedia_logo, luca_skeleton,
+ *   whose soft shading cannot survive 16 colors) are dropped in favor
+ *   of the standard color-mode tracer on the unsnapped pixels.
  * Diffuse content (photo, gradient, noisy_photo) matches no tier and is
  * left unchanged. Measured top-16 coverage on the parity set: tier-3
  * gainer 0.487, skipped images 0.006 to 0.145, so 0.40 separates the
@@ -119,6 +123,19 @@ export function paletteSnapImageData(
 
 export const PALETTE_SNAP_TIER3_COLORS = 16;
 export const PALETTE_SNAP_TIER3_MIN_TOP16_COVERAGE = 0.4;
+/**
+ * Scoring-tolerance mirror of the parity harness TOLERANCE: a pixel
+ * counts as preserved when its worst RGB channel moves by at most 24.
+ */
+export const PALETTE_SNAP_TOLERANCE = 24;
+/**
+ * Minimum fraction of pixels that must survive the snap within
+ * tolerance for the tier to stand. Below this the snap is lossy (it
+ * collapses real shading onto too few colors) and the tier is dropped.
+ * Tuned on the parity suite: keeps chart (0.9896) and luca_frog
+ * (0.9974), drops wikipedia_logo (0.9627) and luca_skeleton (0.6352).
+ */
+export const PALETTE_SNAP_MIN_PRESERVED_FRACTION = 0.98;
 
 /**
  * Decide which palette-snap tier applies, or null for no snap.
@@ -168,15 +185,76 @@ export function paletteSnapTier(pixels: Uint8ClampedArray): number | null {
 }
 
 /**
- * Tiered gated palette snap: pick the snap strength via paletteSnapTier;
- * return the input unchanged when no tier fires.
+ * Fraction of pixels whose RGB survives the snap within the scoring
+ * tolerance (worst channel diff <= 24, mirroring the parity harness
+ * TOLERANCE). Alpha is untouched by the snap and ignored here.
+ */
+export function snapPreservedFraction(
+  original: Uint8ClampedArray,
+  snapped: Uint8ClampedArray,
+  width: number,
+  height: number,
+): number {
+  const count = Math.min(
+    original.length,
+    snapped.length,
+    width * height * 4,
+  );
+  let preserved = 0;
+  let total = 0;
+  for (let i = 0; i + 3 < count; i += 4) {
+    const dr = Math.abs(original[i] - snapped[i]);
+    const dg = Math.abs(original[i + 1] - snapped[i + 1]);
+    const db = Math.abs(original[i + 2] - snapped[i + 2]);
+    total += 1;
+    if (Math.max(dr, dg, db) <= PALETTE_SNAP_TOLERANCE) {
+      preserved += 1;
+    }
+  }
+  return total === 0 ? 1 : preserved / total;
+}
+
+/**
+ * Damage-checked tier decision. The candidate tier from paletteSnapTier
+ * is kept only when snapping to it preserves the image within the
+ * scoring tolerance. A lossy snap (e.g. tier 3 collapsing a noisy
+ * illustration's soft shading onto 16 colors: luca_skeleton keeps only
+ * 63.5% of pixels within tolerance) destroys information the
+ * binary-layer path can never recover, while the standard color-mode
+ * tracer does better on the unsnapped pixels (skeleton 0.6270 to
+ * 0.8762, wikipedia_logo 0.8940 to 0.9163 on the honest metric).
+ * Returns null when no tier fires or the snap would damage the image.
+ */
+export function damageCheckedPaletteSnapTier(
+  pixels: Uint8ClampedArray,
+  width: number,
+  height: number,
+): number | null {
+  const tier = paletteSnapTier(pixels);
+  if (tier === null) {
+    return null;
+  }
+  const snapped = paletteSnapImageData(pixels, width, height, tier);
+  if (
+    snapPreservedFraction(pixels, snapped, width, height) <
+    PALETTE_SNAP_MIN_PRESERVED_FRACTION
+  ) {
+    return null;
+  }
+  return tier;
+}
+
+/**
+ * Tiered gated palette snap: pick the snap strength via
+ * damageCheckedPaletteSnapTier; return the input unchanged when no
+ * tier fires or the snap would damage the image.
  */
 export function gatedPaletteSnapTiered(
   pixels: Uint8ClampedArray,
   width: number,
   height: number,
 ): Uint8ClampedArray {
-  const tier = paletteSnapTier(pixels);
+  const tier = damageCheckedPaletteSnapTier(pixels, width, height);
   if (tier === null) {
     return pixels.slice(0, width * height * 4);
   }

@@ -1,13 +1,17 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  damageCheckedPaletteSnapTier,
   gatedPaletteSnapTiered,
   paletteSnapImageData,
   paletteSnapTier,
+  snapPreservedFraction,
   PALETTE_SNAP_COLORS,
+  PALETTE_SNAP_MIN_PRESERVED_FRACTION,
   PALETTE_SNAP_MIN_TOPK_COVERAGE,
   PALETTE_SNAP_TIER3_COLORS,
   PALETTE_SNAP_TIER3_MIN_TOP16_COVERAGE,
+  PALETTE_SNAP_TOLERANCE,
 } from "@/lib/image/paletteSnap";
 
 function makePixels(
@@ -78,6 +82,8 @@ describe("paletteSnapTier constants", () => {
     expect(PALETTE_SNAP_MIN_TOPK_COVERAGE).toBe(0.9);
     expect(PALETTE_SNAP_TIER3_COLORS).toBe(16);
     expect(PALETTE_SNAP_TIER3_MIN_TOP16_COVERAGE).toBe(0.4);
+    expect(PALETTE_SNAP_TOLERANCE).toBe(24);
+    expect(PALETTE_SNAP_MIN_PRESERVED_FRACTION).toBe(0.98);
   });
 });
 
@@ -124,6 +130,80 @@ describe("paletteSnapTier", () => {
       readFileSync("/tmp/ps_gradient.png.in.rgba").buffer,
     );
     expect(paletteSnapTier(grad)).toBeNull();
+  });
+});
+
+describe("snapPreservedFraction", () => {
+  it("counts pixels within the 24/255 tolerance as preserved", () => {
+    // 4x1: identical, at-tolerance (24), over-tolerance (25), far.
+    const original = makePixels(4, 1, () => [100, 100, 100, 255]);
+    const snapped = makePixels(4, 1, (x) =>
+      x === 0
+        ? [100, 100, 100, 255]
+        : x === 1
+          ? [124, 100, 100, 255]
+          : x === 2
+            ? [125, 100, 100, 255]
+            : [200, 100, 100, 255],
+    );
+    expect(snapPreservedFraction(original, snapped, 4, 1)).toBe(0.5);
+  });
+
+  it("ignores alpha differences", () => {
+    const original = makePixels(2, 1, () => [50, 60, 70, 0]);
+    const snapped = makePixels(2, 1, () => [50, 60, 70, 255]);
+    expect(snapPreservedFraction(original, snapped, 2, 1)).toBe(1);
+  });
+});
+
+describe("damageCheckedPaletteSnapTier", () => {
+  it("drops a lossy tier-3 snap on noisy illustration shading", () => {
+    // wikipedia_logo: raw tier is 16, but the snap to 16 preserves only
+    // ~96% of pixels within tolerance, so the damage check drops it.
+    const input = new Uint8ClampedArray(
+      readFileSync("/tmp/ps_wikipedia_logo.png.in.rgba").buffer,
+    );
+    const [w, h] = readFileSync("/tmp/ps_wikipedia_logo.png.size", "utf8")
+      .trim()
+      .split(" ")
+      .map(Number);
+    expect(paletteSnapTier(input)).toBe(16);
+    expect(damageCheckedPaletteSnapTier(input, w, h)).toBeNull();
+    // gatedPaletteSnapTiered then returns the input unchanged.
+    const out = gatedPaletteSnapTiered(input, w, h);
+    expect(out).toEqual(input);
+  });
+
+  it("keeps tiers whose snap is harmless", () => {
+    // goose_balloon: tier 8, snap preserves ~100% within tolerance.
+    const gb = new Uint8ClampedArray(
+      readFileSync("/tmp/ps_goose_balloon.png.in.rgba").buffer,
+    );
+    const [gw, gh] = readFileSync("/tmp/ps_goose_balloon.png.size", "utf8")
+      .trim()
+      .split(" ")
+      .map(Number);
+    expect(damageCheckedPaletteSnapTier(gb, gw, gh)).toBe(8);
+    // thin_lines: tier 3 (n=3), the snap is the identity.
+    const tl = new Uint8ClampedArray(
+      readFileSync("/tmp/ps_thin_lines.png.in.rgba").buffer,
+    );
+    const [tw, th] = readFileSync("/tmp/ps_thin_lines.png.size", "utf8")
+      .trim()
+      .split(" ")
+      .map(Number);
+    expect(damageCheckedPaletteSnapTier(tl, tw, th)).toBe(3);
+  });
+
+  it("returns null when no tier fires", () => {
+    const photo = new Uint8ClampedArray(
+      readFileSync("/tmp/ps_photo.png.in.rgba").buffer,
+    );
+    const [w, h] = readFileSync("/tmp/ps_photo.png.size", "utf8")
+      .trim()
+      .split(" ")
+      .map(Number);
+    expect(damageCheckedPaletteSnapTier(photo, w, h)).toBeNull();
   });
 });
 
