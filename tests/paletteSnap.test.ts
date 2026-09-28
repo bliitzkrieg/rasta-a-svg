@@ -101,9 +101,9 @@ describe("paletteSnapTier", () => {
   });
 
   it("selects tier 2 (k=8) for flat artwork with fringes", () => {
-    // dither: 102 unique colors, top-8 cover 94.4%.
+    // goose_balloon: 163 unique colors, top-8 cover 97.5%.
     const input = new Uint8ClampedArray(
-      readFileSync("/tmp/ps_dither.png.in.rgba").buffer,
+      readFileSync("/tmp/ps_goose_balloon.png.in.rgba").buffer,
     );
     expect(paletteSnapTier(input)).toBe(8);
   });

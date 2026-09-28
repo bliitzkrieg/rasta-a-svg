@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { descreenIfDithered, gaussianBlur, isOrderedDither } from "@/lib/image/descreen";
+import { ditherPassthroughIfDithered, gaussianBlur, isOrderedDither } from "@/lib/image/descreen";
 
 function solidRgba(width: number, height: number, value: number): Uint8ClampedArray {
   const px = new Uint8ClampedArray(width * height * 4);
@@ -83,19 +83,17 @@ describe("gaussianBlur", () => {
   });
 });
 
-describe("descreenIfDithered", () => {
-  it("returns a blurred image for ordered dither", () => {
+describe("ditherPassthroughIfDithered", () => {
+  it("returns the raw pixels unmodified for ordered dither", () => {
     const px = checkerboard(32);
-    const out = descreenIfDithered(px, px, 32, 32);
+    const out = ditherPassthroughIfDithered(px, 32, 32);
     expect(out).not.toBeNull();
-    // The checkerboard is smoothed toward mid-gray.
-    const mid = out![(16 * 32 + 16) * 4];
-    expect(mid).toBeGreaterThan(100);
-    expect(mid).toBeLessThan(156);
+    // The dot pattern passes through untouched: it is image content.
+    expect(Array.from(out!)).toEqual(Array.from(px));
   });
 
   it("returns null for non-dithered input", () => {
     const px = solidRgba(32, 32, 128);
-    expect(descreenIfDithered(px, px, 32, 32)).toBeNull();
+    expect(ditherPassthroughIfDithered(px, 32, 32)).toBeNull();
   });
 });

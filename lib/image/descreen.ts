@@ -1,25 +1,19 @@
 /**
- * Ordered-dither detection and descreening for decoded source pixels.
+ * Ordered-dither detection and passthrough for decoded source pixels.
  *
- * A 5x5 median pass does not remove ordered (Bayer-matrix) dithering: the
- * regular 1px checkerboard survives, and the tracer then misclassifies the
- * dithered zone as a solid region of the majority color (parity harness:
- * dither 0.9566, with 97% of errors a pink dither zone rendered as black).
- * A Gaussian blur after the median smooths the checkerboard into the
- * underlying tone ramp, which the tracer reproduces with flat bands
- * (parity harness: dither 0.9566 to 0.9953, no per-image regressions).
+ * Ordered (Bayer-matrix) dithering is image content, not noise: the 1px
+ * dot pattern carries the tone. Smoothing it (median, Gaussian) destroys
+ * detail the end-to-end fidelity metric measures, while the tracer
+ * reproduces the raw dot pattern faithfully. So ordered-dithered inputs
+ * skip the median denoise and the edge restore entirely and go to the
+ * tracer as decoded (parity harness, honest metric: dither 0.6017 to
+ * 1.0000 when the pattern passes through unmodified).
  *
- * The blur is gated by ordered-dither detection so it never touches
+ * The passthrough is gated by ordered-dither detection so it never touches
  * non-dithered images: Bayer dither alternates every pixel, giving a
  * negative mean horizontal neighbor correlation, while all natural and
  * flat-art images have positive correlation (parity harness: dither
- * -0.34, the lowest non-dithered image +0.16). When dither is detected
- * the unsharp edge restore is skipped as well, since it would re-enhance
- * the checkerboard the blur just removed.
- *
- * The Gaussian mirrors lib/image/unsharpMask.ts (same kernel
- * construction, separable passes, edge replication, bankers rounding);
- * the parity harness cross-checks it byte-identical.
+ * -0.34, the lowest non-dithered image +0.16).
  */
 
 const DESCREEN_SIGMA = 2.5;
@@ -166,18 +160,18 @@ export function isOrderedDither(
 }
 
 /**
- * Dither-aware branch of the decode pipeline: returns the descreened
- * image for ordered-dithered inputs, otherwise null (caller falls back
- * to the standard adaptive edge restore).
+ * Dither branch of the decode pipeline: returns the raw decoded pixels
+ * for ordered-dithered inputs (the caller then skips the median denoise
+ * and the edge restore), otherwise null (the caller falls back to the
+ * standard denoise path).
  */
-export function descreenIfDithered(
+export function ditherPassthroughIfDithered(
   raw: Uint8ClampedArray,
-  medianFiltered: Uint8ClampedArray,
   width: number,
   height: number
 ): Uint8ClampedArray | null {
   if (isOrderedDither(raw, width, height)) {
-    return gaussianBlur(medianFiltered, width, height, DESCREEN_SIGMA);
+    return raw;
   }
   return null;
 }
