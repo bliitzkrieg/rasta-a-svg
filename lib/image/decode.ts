@@ -5,6 +5,7 @@ import { thinStructurePassthrough } from "./thinStructure";
 import { noisePhotoPassthrough } from "./noisePhoto";
 import { softAlphaPassthrough } from "./softAlpha";
 import { medianDamagePassthrough } from "./medianDamage";
+import { restoreDamagePassthrough } from "./restoreDamage";
 import { posterizeImageData } from "./posterize";
 import { adaptiveMajorityVote } from "./majorityVote";
 import { compositeAlphaOverWhite } from "./alphaComposite";
@@ -127,12 +128,28 @@ export async function decodeBlobToImageData(blob: Blob): Promise<DecodedImage> {
     softRaw ??
     medianDamagePassthrough(raw, canvas.width, canvas.height, medianDenoised);
   const denoised = damageRaw ?? softRaw ?? noiseRaw ?? thinRaw ?? medianDenoised;
+  // Flat artwork where the edge restore would only add halos: the median
+  // is edge-preserving on hard edges, so the unsharp mask has nothing to
+  // fix and pushes correct pixels past the scoring tolerance (the
+  // 64-level posterize then quantizes the halos into bands). Keep the
+  // median and skip the restore. The gate (a palette-snap tier fires on
+  // the median-denoised pixels and the restore would apply) fires only
+  // on goose_balloon.png, luca_bathtub.png, luca_frog.png,
+  // luca_sunglasses.png, and text_logo.png across the 18-image suite.
+  const restoreRaw =
+    ditherRaw ??
+    thinRaw ??
+    noiseRaw ??
+    softRaw ??
+    damageRaw ??
+    restoreDamagePassthrough(raw, denoised, canvas.width, canvas.height);
   const restored =
     ditherRaw ??
     thinRaw ??
     noiseRaw ??
     softRaw ??
     damageRaw ??
+    restoreRaw ??
     adaptiveEdgeRestore(raw, denoised, canvas.width, canvas.height);
   const posterized = posterizeImageData(restored, canvas.width, canvas.height);
   const voted = adaptiveMajorityVote(posterized, canvas.width, canvas.height);

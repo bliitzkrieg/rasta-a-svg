@@ -25,7 +25,12 @@
 const SIGMA = 2.0;
 const PERCENT = 50;
 const THRESHOLD = 3;
-const NOISE_GATE = 0.0005;
+/**
+ * Minimum median rewrite fraction for the edge restore to apply. Shared
+ * with the restore-damage gate (lib/image/restoreDamage.ts), which skips
+ * the restore on flat artwork where the mask would only add halos.
+ */
+export const NOISE_GATE = 0.0005;
 const NOISE_DELTA = 8;
 // Very noisy inputs (e.g. heavily compressed photos) ring under a full
 // 50% sharpen; they get a gentler pass instead.
