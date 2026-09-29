@@ -143,7 +143,7 @@ const RECOLOR_TOLERANCE = 24;
  * How many frequent original colors per layer are tried as fill
  * candidates (plus the current palette color, which is always tried).
  */
-const RECOLOR_TOP_CANDIDATES = 8;
+const RECOLOR_TOP_CANDIDATES = 16;
 
 /**
  * Recolor each binary-layer fill against the ORIGINAL (pre-prep) image.
