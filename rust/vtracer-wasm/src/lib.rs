@@ -484,7 +484,7 @@ fn recolor_cluster_fill(
     originals: &[u8],
 ) -> String {
     const TOLERANCE: i16 = 24;
-    const TOP_CANDIDATES: usize = 8;
+    const TOP_CANDIDATES: usize = 16;
 
     let current = cluster.residue_color();
     let mut counts: HashMap<u32, usize> = HashMap::new();
