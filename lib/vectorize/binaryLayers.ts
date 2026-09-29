@@ -238,6 +238,7 @@ export function recolorPaletteFills(
     // minimum keeps degenerate speck layers on the conservative
     // tie-break below.
     const [modeKey, modeCount] = sorted[0];
+    // Force rebuild: ensures the worker bundle picks up the dominant-color guard.
     if (
       members.length >= RECOLOR_FLAT_MIN_PIXELS &&
       modeCount / members.length >= 0.5
