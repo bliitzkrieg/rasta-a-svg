@@ -77,7 +77,7 @@ export function toVTracerOptions(
     flatClusterMaxDelta: clamp(
       Math.round(settings.flatClusterMaxDelta),
       0,
-      255,
+      1000,
     ),
     maxMergeSpread: clamp(Math.round(settings.maxMergeSpread), 0, 765),
   };

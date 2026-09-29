@@ -150,12 +150,16 @@ describe("vtracer WASM pipeline", () => {
 
   it("spline default produces smaller output than pixel mode", () => {
     const { width, height, pixels } = noisyPixels();
-    const spline = trace(width, height, pixels, defaultOptions());
+    // Use a restrictive flatClusterMaxDelta so polygon simplification stays
+    // active; with the default exact-walk-everywhere (1000) both modes take
+    // the exact walk and produce identical output.
+    const opts = { ...defaultOptions(), flatClusterMaxDelta: 96 };
+    const spline = trace(width, height, pixels, opts);
     const pixel = trace(
       width,
       height,
       pixels,
-      { ...defaultOptions(), mode: "none" } as Record<string, unknown>,
+      { ...opts, mode: "none" } as Record<string, unknown>,
     );
     expect(spline.layers.length).toBe(pixel.layers.length);
     expect(spline.svg.length).toBeLessThan(pixel.svg.length);
