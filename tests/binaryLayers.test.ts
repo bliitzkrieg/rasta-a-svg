@@ -6,6 +6,7 @@ import { toVTracerOptions } from "@/lib/vectorize/vtracerOptions";
 import {
   innerSvgPaths,
   paletteRanks,
+  recolorPaletteFills,
   rgbToHex,
   topOpaquePalette,
   traceBinaryLayers,
@@ -191,5 +192,80 @@ describe("traceBinaryLayers", () => {
     const out = traceBinaryLayers(traceFn, 2, 2, pixels, 4, defaultOptionsJson());
     expect(out.layers.length).toBeGreaterThan(0);
     expect(out.layers.length).toBeLessThanOrEqual(4);
+  });
+
+  it("recolors fills against the original when originalPixels are passed", () => {
+    // Prepped: 3x (200,200,200) + 1x black. Original: the gray region was
+    // really (250,250,250) before preprocessing shifted it (worst diff 50,
+    // outside the 24 tolerance), and the black pixel was (10,10,10).
+    const pixels = makePixels(4, 1, (x) =>
+      x < 3 ? [200, 200, 200, 255] : [0, 0, 0, 255],
+    );
+    const original = makePixels(4, 1, (x) =>
+      x < 3 ? [250, 250, 250, 255] : [10, 10, 10, 255],
+    );
+    const out = traceBinaryLayers(
+      traceFn,
+      4,
+      1,
+      pixels,
+      2,
+      defaultOptionsJson(),
+      original,
+    );
+    const fills = [...out.svg.matchAll(/fill="(#[0-9A-F]{6})"/g)].map(
+      (m) => m[1],
+    );
+    expect(new Set(fills)).toEqual(new Set(["#FAFAFA", "#000000"]));
+    expect(out.layers[0].color).toBe("#FAFAFA");
+    expect(out.layers[1].color).toBe("#000000");
+  });
+
+  it("keeps the prepped fill when the original already matches it", () => {
+    // Original == prepped: the current palette color wins every tie.
+    const pixels = makePixels(4, 1, (x) =>
+      x < 3 ? [200, 200, 200, 255] : [0, 0, 0, 255],
+    );
+    const out = traceBinaryLayers(
+      traceFn,
+      4,
+      1,
+      pixels,
+      2,
+      defaultOptionsJson(),
+      pixels,
+    );
+    const fills = [...out.svg.matchAll(/fill="(#[0-9A-F]{6})"/g)].map(
+      (m) => m[1],
+    );
+    expect(new Set(fills)).toEqual(new Set(["#C8C8C8", "#000000"]));
+  });
+});
+
+describe("recolorPaletteFills", () => {
+  it("composites semi-transparent originals over white", () => {
+    // One semi-transparent original pixel (100,100,100,200) composites to
+    // (133,133,133); the prepped fill (150,150,150) is within tolerance of
+    // it, so the current color wins the tie and the fill is kept.
+    const prepped = makePixels(1, 1, () => [150, 150, 150, 255]);
+    const original = makePixels(1, 1, () => [100, 100, 100, 200]);
+    const palette = topOpaquePalette(prepped, 1, 1, 1);
+    const ranks = paletteRanks(prepped, 1, 1, palette);
+    expect(recolorPaletteFills(original, 1, 1, palette, ranks)).toEqual([
+      [150, 150, 150],
+    ]);
+  });
+
+  it("recolors to the composited original when the prepped fill misses", () => {
+    // (100,100,100,128) composites to (177,177,177), which is 27 away from
+    // the prepped fill (150,150,150): outside the 24 tolerance, so the
+    // fill is recolored to the composited original color.
+    const prepped = makePixels(1, 1, () => [150, 150, 150, 255]);
+    const original = makePixels(1, 1, () => [100, 100, 100, 128]);
+    const palette = topOpaquePalette(prepped, 1, 1, 1);
+    const ranks = paletteRanks(prepped, 1, 1, palette);
+    expect(recolorPaletteFills(original, 1, 1, palette, ranks)).toEqual([
+      [177, 177, 177],
+    ]);
   });
 });

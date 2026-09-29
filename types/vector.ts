@@ -102,6 +102,8 @@ export interface ConvertJobRequest {
   settings: ConversionSettings;
   /** Palette-snap tier that fired during decode (2, 8, or 16), if any. */
   paletteTier: number | null;
+  /** Pre-prep decoded pixels, for the binary-layer fill recolor. */
+  originalPixels: Uint8ClampedArray;
 }
 
 export interface ConvertJobProgress {

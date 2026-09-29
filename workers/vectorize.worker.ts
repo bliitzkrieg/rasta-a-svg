@@ -108,6 +108,11 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
         payload.pixels.byteOffset,
         payload.pixels.byteLength,
       );
+      const originalPixels = new Uint8ClampedArray(
+        payload.originalPixels.buffer,
+        payload.originalPixels.byteOffset,
+        payload.originalPixels.byteLength,
+      );
       const optionsJson = JSON.stringify(options);
       let traced: VTracerTraceOutput;
       if (payload.paletteTier != null && options.clusteringMode === "color") {
@@ -121,6 +126,7 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
           payload.pixels,
           payload.paletteTier,
           optionsJson,
+          originalPixels,
         );
         traced = {
           width: merged.width,

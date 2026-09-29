@@ -135,11 +135,13 @@ export function useConversionWorker(
           pixels: decoded.pixels,
           settings: state.settings,
           paletteTier: decoded.paletteTier,
+          originalPixels: decoded.originalPixels,
         };
-        // Transfer (not clone) the pixel buffer: it is 4 MB at 1000x1000 and
-        // is never reused on the main thread after this point.
+        // Transfer (not clone) the pixel buffers: they are 4 MB each at
+        // 1000x1000 and are never reused on the main thread after this point.
         worker.postMessage({ type: "convert", payload }, [
           payload.pixels.buffer as ArrayBuffer,
+          payload.originalPixels.buffer as ArrayBuffer,
         ]);
       } catch (error) {
         processingRef.current = null;

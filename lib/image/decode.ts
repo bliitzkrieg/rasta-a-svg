@@ -18,6 +18,9 @@ export interface DecodedImage {
   pixels: Uint8ClampedArray;
   /** Palette-snap tier that fired (2, 8, or 16), or null when no tier did. */
   paletteTier: number | null;
+  /** The decoded and resized image before any preprocessing, for the
+   * binary-layer fill recolor (which matches fills to the original). */
+  originalPixels: Uint8ClampedArray;
 }
 
 const TARGET_MAX_DIMENSION = 1000;
@@ -184,5 +187,6 @@ export async function decodeBlobToImageData(blob: Blob): Promise<DecodedImage> {
     height: canvas.height,
     pixels: merged,
     paletteTier: tier,
+    originalPixels: new Uint8ClampedArray(raw),
   };
 }

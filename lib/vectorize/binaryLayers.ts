@@ -134,9 +134,136 @@ export function innerSvgPaths(svg: string): string {
 }
 
 /**
+ * Scoring tolerance of the honest parity metric: a pixel counts as
+ * matching when its worst RGB channel differs by at most this much.
+ */
+const RECOLOR_TOLERANCE = 24;
+
+/**
+ * How many frequent original colors per layer are tried as fill
+ * candidates (plus the current palette color, which is always tried).
+ */
+const RECOLOR_TOP_CANDIDATES = 8;
+
+/**
+ * Recolor each binary-layer fill against the ORIGINAL (pre-prep) image.
+ *
+ * The palette colors come from the prepped pixels, but the honest metric
+ * scores the rendered SVG against the original input. Preprocessing
+ * (posterize, majority vote, median) shifts colors, so a palette color can
+ * sit outside the scoring tolerance of the true original colors at that
+ * layer's pixels, and the tracer then bakes the shifted color into every
+ * pixel the layer paints. For each layer, gather the original colors
+ * (composited over white, like the metric's reference) at its rank pixels
+ * and pick the fill with the best within-tolerance coverage: the current
+ * palette color first, then the most frequent exact original colors
+ * (count desc, rgb key asc). The current color wins ties, so fills only
+ * change on measured gain. Parity harness on the honest metric:
+ * chart 0.9917 to 1.0000, bathtub 0.9902 to 0.9933, goose 0.9913 to
+ * 0.9929, text_logo 0.9986 to 0.9989, zero regressions on the other six
+ * tier images.
+ */
+export function recolorPaletteFills(
+  originalPixels: Uint8ClampedArray,
+  width: number,
+  height: number,
+  palette: Rgb[],
+  ranks: Int32Array,
+): Rgb[] {
+  const n = Math.min(
+    Math.floor(originalPixels.length / 4),
+    width * height,
+    ranks.length,
+  );
+  // Original color of pixel p, composited over white like the metric's
+  // reference. Stored once so candidate scoring is a single pass each.
+  const orig = new Uint8Array(n * 3);
+  for (let p = 0; p < n; p += 1) {
+    const o = p * 4;
+    const a = originalPixels[o + 3];
+    const t = p * 3;
+    if (a === 255) {
+      orig[t] = originalPixels[o];
+      orig[t + 1] = originalPixels[o + 1];
+      orig[t + 2] = originalPixels[o + 2];
+    } else if (a === 0) {
+      orig[t] = 255;
+      orig[t + 1] = 255;
+      orig[t + 2] = 255;
+    } else {
+      const af = a / 255;
+      const inv = 1 - af;
+      orig[t] = Math.round(originalPixels[o] * af + 255 * inv);
+      orig[t + 1] = Math.round(originalPixels[o + 1] * af + 255 * inv);
+      orig[t + 2] = Math.round(originalPixels[o + 2] * af + 255 * inv);
+    }
+  }
+  // One pass: per-layer pixel index lists plus original-color frequencies.
+  const layerPixels: number[][] = palette.map(() => []);
+  const counts: Map<number, number>[] = palette.map(() => new Map());
+  for (let p = 0; p < n; p += 1) {
+    const r = ranks[p];
+    if (r < 0 || r >= palette.length) {
+      continue;
+    }
+    layerPixels[r].push(p);
+    const t = p * 3;
+    const key = rgbKey(orig[t], orig[t + 1], orig[t + 2]);
+    const m = counts[r];
+    m.set(key, (m.get(key) ?? 0) + 1);
+  }
+  const fills: Rgb[] = [];
+  for (let r = 0; r < palette.length; r += 1) {
+    const members = layerPixels[r];
+    if (members.length === 0) {
+      fills.push(palette[r]);
+      continue;
+    }
+    const top = [...counts[r].entries()]
+      .sort((a, b) => b[1] - a[1] || a[0] - b[0])
+      .slice(0, RECOLOR_TOP_CANDIDATES)
+      .map(([key]) => keyToRgb(key));
+    const current = palette[r];
+    const currentKey = rgbKey(current[0], current[1], current[2]);
+    const candidates: Rgb[] = [current];
+    for (const c of top) {
+      if (rgbKey(c[0], c[1], c[2]) !== currentKey) {
+        candidates.push(c);
+      }
+    }
+    let best = current;
+    let bestCovered = -1;
+    for (const [cr, cg, cb] of candidates) {
+      let covered = 0;
+      for (const p of members) {
+        const t = p * 3;
+        const worst = Math.max(
+          Math.abs(orig[t] - cr),
+          Math.abs(orig[t + 1] - cg),
+          Math.abs(orig[t + 2] - cb),
+        );
+        if (worst <= RECOLOR_TOLERANCE) {
+          covered += 1;
+        }
+      }
+      if (covered > bestCovered) {
+        bestCovered = covered;
+        best = [cr, cg, cb];
+      }
+    }
+    fills.push(best);
+  }
+  return fills;
+}
+
+/**
  * Trace each palette color as a nested binary mask (rank r covers its own
  * color plus every color painted above it) and merge the results into one
  * layered output painted background-first.
+ *
+ * When `originalPixels` (the pre-prep decoded image) is provided, each
+ * layer's fill is recolored against the original via recolorPaletteFills;
+ * otherwise the prepped palette colors are used as-is.
  */
 export function traceBinaryLayers(
   traceFn: WasmTraceFn,
@@ -145,6 +272,7 @@ export function traceBinaryLayers(
   pixels: Uint8ClampedArray,
   tier: number,
   optionsJson: string,
+  originalPixels?: Uint8ClampedArray | null,
 ): BinaryTraceOutput {
   const palette = topOpaquePalette(pixels, width, height, tier);
   const binaryOptionsJson = JSON.stringify({
@@ -152,6 +280,10 @@ export function traceBinaryLayers(
     clusteringMode: "binary",
   });
   const ranks = paletteRanks(pixels, width, height, palette);
+  const fills =
+    originalPixels != null
+      ? recolorPaletteFills(originalPixels, width, height, palette, ranks)
+      : palette;
   const layers: VectorLayer[] = [];
   const svgParts: string[] = [];
   let nodeCount = 0;
@@ -171,7 +303,7 @@ export function traceBinaryLayers(
     if (traced.layers.length === 0) {
       continue;
     }
-    const hex = rgbToHex(palette[r]);
+    const hex = rgbToHex(fills[r]);
     const name = `COLOR_${String(r + 1).padStart(2, "0")}`;
     for (const layer of traced.layers) {
       layers.push({ name, color: hex, paths: layer.paths });
