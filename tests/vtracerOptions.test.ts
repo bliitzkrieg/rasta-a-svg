@@ -25,7 +25,7 @@ describe("toVTracerOptions", () => {
       tinyMergeMaxNeighborSpread: 0,
       tinyMergeMaxPixelSpread: 0,
       flatClusterMaxDelta: 96,
-      maxMergeSpread: 192,
+      maxMergeSpread: 128,
     });
   });
 
