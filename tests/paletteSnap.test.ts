@@ -83,7 +83,7 @@ describe("paletteSnapTier constants", () => {
     expect(PALETTE_SNAP_TIER3_COLORS).toBe(16);
     expect(PALETTE_SNAP_TIER3_MIN_TOP16_COVERAGE).toBe(0.4);
     expect(PALETTE_SNAP_TOLERANCE).toBe(24);
-    expect(PALETTE_SNAP_MIN_PRESERVED_FRACTION).toBe(0.98);
+    expect(PALETTE_SNAP_MIN_PRESERVED_FRACTION).toBe(0.99);
   });
 });
 

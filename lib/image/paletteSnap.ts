@@ -132,10 +132,14 @@ export const PALETTE_SNAP_TOLERANCE = 24;
  * Minimum fraction of pixels that must survive the snap within
  * tolerance for the tier to stand. Below this the snap is lossy (it
  * collapses real shading onto too few colors) and the tier is dropped.
- * Tuned on the parity suite: keeps chart (0.9896) and luca_frog
- * (0.9974), drops wikipedia_logo (0.9627) and luca_skeleton (0.6352).
+ * Tuned on the parity suite: at 0.99 the tier stands on chart (0.9994),
+ * luca_bathtub (0.9942), goose_balloon (0.9951) and text_logo (0.9957),
+ * and drops on diagonal_text (0.9834), luca_frog (0.9848) and
+ * luca_sunglasses (0.9895), where the honest end-to-end metric measures
+ * the snap as net-negative for the tracer (diagonal_text 0.9824 to
+ * 0.9971, luca_frog 0.9761 to 0.9860, luca_sunglasses 0.9824 to 0.9872).
  */
-export const PALETTE_SNAP_MIN_PRESERVED_FRACTION = 0.98;
+export const PALETTE_SNAP_MIN_PRESERVED_FRACTION = 0.99;
 
 /**
  * Decide which palette-snap tier applies, or null for no snap.
