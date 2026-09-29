@@ -141,7 +141,7 @@ describe("adaptiveMajorityVote", () => {
   });
 
   it("reverts vote moves larger than the color-shift cap, keeps small ones", () => {
-    expect(MAJORITY_VOTE_MAX_COLOR_SHIFT).toBe(24);
+    expect(MAJORITY_VOTE_MAX_COLOR_SHIFT).toBe(20);
     // A lone red outlier on black: the vote would repaint it black
     // (shift 255), so the guard reverts it to red.
     const pixels = makePixels(8, 8, (x, y) =>

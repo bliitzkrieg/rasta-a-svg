@@ -19,11 +19,14 @@
  * set: flat art 0.00 to 0.07, photo 0.43, wikipedia_logo 0.18, so 0.10
  * separates the two regimes with margin on both sides. When the vote is
  * kept, pixels it would move by more than MAJORITY_VOTE_MAX_COLOR_SHIFT
- * (24, the scoring tolerance) in some channel keep their pre-vote color:
- * the vote's edge cleaning is preserved where it only nudges colors, while
- * its occasional large repaints (unrecoverable for the tracer) are
- * reverted (parity harness, honest end-to-end metric: diagonal_text 0.9725
- * to 0.9824, text_logo 0.9897 to 0.9927, no per-image regressions).
+ * (20, tightened from the scoring tolerance 24 in v1.0.28) in some channel
+ * keep their pre-vote color: the vote's edge cleaning is preserved where
+ * it only nudges colors, while its occasional large repaints (unrecoverable
+ * for the tracer) are reverted. A within-tolerance move can still push an
+ * already-near-boundary anti-aliased pixel past the tolerance, so 20
+ * measured better than 24 on the honest end-to-end metric (parity harness:
+ * chart 0.9917 to 1.0000, luca_bathtub 0.9962 to 0.9993, no per-image
+ * regressions across the vote-affected set).
  *
  * Parity harness: +0.0029 overall (0.9884 to 0.9913), no per-image
  * regressions (diagonal_text 0.9743 to 0.9914, text_logo 0.9923 to 0.9964,
@@ -43,11 +46,12 @@ export const MAJORITY_VOTE_MAX_CHANGE_FRACTION = 0.1;
  * its pre-vote color instead. The vote's edge cleaning is preserved where
  * it only nudges colors, while the occasional large repaint (which the
  * tracer cannot recover, since the true color is gone from the input) is
- * reverted. The value matches the parity scoring tolerance: a reverted
- * pixel can miss the reference by no more than the tolerance the meter
- * allows, so the guard never lowers the achievable ceiling.
+ * reverted. The value sits just under the parity scoring tolerance (24):
+ * a within-tolerance vote move can push an already-near-boundary pixel
+ * past the tolerance, so the slightly tighter cap measured better than 24
+ * on the honest end-to-end metric (v1.0.28).
  */
-export const MAJORITY_VOTE_MAX_COLOR_SHIFT = 24;
+export const MAJORITY_VOTE_MAX_COLOR_SHIFT = 20;
 
 function clampIndex(value: number, max: number): number {
   return value < 0 ? 0 : value >= max ? max - 1 : value;
