@@ -28,6 +28,13 @@ type VTracerModule = {
     pixels: Uint8Array,
     optionsJson: string,
   ) => string;
+  trace_rgba_to_json_with_originals?: (
+    width: number,
+    height: number,
+    pixels: Uint8Array,
+    originalPixels: Uint8Array,
+    optionsJson: string,
+  ) => string;
 };
 
 type VTracerTraceOutput = {
@@ -136,12 +143,30 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
           metrics: merged.metrics,
         };
       } else {
-        const raw = vtracer.trace_rgba_to_json(
-          payload.width,
-          payload.height,
-          pixels,
-          optionsJson,
-        );
+        // Color path: give the tracer the pre-prep original pixels so it
+        // can re-pick each cluster's fill from the original colors at its
+        // member pixels (recovering preprocessing color damage). Falls back
+        // to the plain export if the WASM predates the recolor export.
+        const recolorTrace = vtracer.trace_rgba_to_json_with_originals;
+        const raw =
+          recolorTrace != null
+            ? recolorTrace(
+                payload.width,
+                payload.height,
+                pixels,
+                new Uint8Array(
+                  originalPixels.buffer,
+                  originalPixels.byteOffset,
+                  originalPixels.byteLength,
+                ),
+                optionsJson,
+              )
+            : vtracer.trace_rgba_to_json(
+                payload.width,
+                payload.height,
+                pixels,
+                optionsJson,
+              );
         traced = JSON.parse(raw) as VTracerTraceOutput;
       }
 

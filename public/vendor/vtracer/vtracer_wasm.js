@@ -32,6 +32,45 @@ export function trace_rgba_to_json(width, height, pixels, options_json) {
     }
 }
 
+/**
+ * Color-path trace with the pre-preprocessing original pixels alongside.
+ *
+ * Same as trace_rgba_to_json, but each color cluster's fill is re-picked
+ * from the original colors at its member pixels (see recolor_cluster_fill)
+ * instead of always using the shifted cluster average. The binary path is
+ * unchanged (originals are ignored there).
+ * @param {number} width
+ * @param {number} height
+ * @param {Uint8Array} pixels
+ * @param {Uint8Array} original_pixels
+ * @param {string} options_json
+ * @returns {string}
+ */
+export function trace_rgba_to_json_with_originals(width, height, pixels, original_pixels, options_json) {
+    let deferred5_0;
+    let deferred5_1;
+    try {
+        const ptr0 = passArray8ToWasm0(pixels, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArray8ToWasm0(original_pixels, wasm.__wbindgen_malloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passStringToWasm0(options_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len2 = WASM_VECTOR_LEN;
+        const ret = wasm.trace_rgba_to_json_with_originals(width, height, ptr0, len0, ptr1, len1, ptr2, len2);
+        var ptr4 = ret[0];
+        var len4 = ret[1];
+        if (ret[3]) {
+            ptr4 = 0; len4 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred5_0 = ptr4;
+        deferred5_1 = len4;
+        return getStringFromWasm0(ptr4, len4);
+    } finally {
+        wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
+    }
+}
+
 function __wbg_get_imports() {
     const import0 = {
         __proto__: null,

@@ -163,7 +163,43 @@ pub fn trace_rgba_to_json(
 
     let output = match options.clusteringMode.as_str() {
         "binary" => trace_binary_image(width, height, &pixels, &options),
-        _ => trace_color_image(width, height, &pixels, &options)?,
+        _ => trace_color_image(width, height, &pixels, None, &options)?,
+    };
+
+    serde_json::to_string(&output)
+        .map_err(|error| JsValue::from_str(&format!("Failed to serialize trace output: {error}")))
+}
+
+/// Color-path trace with the pre-preprocessing original pixels alongside.
+///
+/// Same as trace_rgba_to_json, but each color cluster's fill is re-picked
+/// from the original colors at its member pixels (see recolor_cluster_fill)
+/// instead of always using the shifted cluster average. The binary path is
+/// unchanged (originals are ignored there).
+#[wasm_bindgen]
+pub fn trace_rgba_to_json_with_originals(
+    width: u32,
+    height: u32,
+    pixels: Vec<u8>,
+    original_pixels: Vec<u8>,
+    options_json: String,
+) -> Result<String, JsValue> {
+    let options: TraceOptions = serde_json::from_str(&options_json)
+        .map_err(|error| JsValue::from_str(&format!("Invalid trace options: {error}")))?;
+
+    let expected = (width as usize) * (height as usize) * 4;
+    if pixels.len() != expected {
+        return Err(JsValue::from_str("RGBA buffer length does not match image size."));
+    }
+    if original_pixels.len() != expected {
+        return Err(JsValue::from_str(
+            "Original RGBA buffer length does not match image size.",
+        ));
+    }
+
+    let output = match options.clusteringMode.as_str() {
+        "binary" => trace_binary_image(width, height, &pixels, &options),
+        _ => trace_color_image(width, height, &pixels, Some(&original_pixels), &options)?,
     };
 
     serde_json::to_string(&output)
@@ -311,6 +347,7 @@ fn trace_color_image(
     width: u32,
     height: u32,
     pixels: &[u8],
+    originals: Option<&[u8]>,
     options: &TraceOptions,
 ) -> Result<TraceOutput, JsValue> {
     let mut image = build_color_image(width, height, pixels);
@@ -336,7 +373,7 @@ fn trace_color_image(
         key_color,
     )?;
 
-    Ok(build_color_output(width, height, &clusters, options))
+    Ok(build_color_output(width, height, &clusters, options, originals))
 }
 
 fn trace_binary_image(
@@ -425,11 +462,113 @@ fn run_color_trace(
     Ok(builder.result())
 }
 
+/// Recolor one color cluster's fill against the pre-prep original image.
+///
+/// Preprocessing (median, posterize, majority vote) shifts colors, and the
+/// tracer bakes the shifted cluster average (residue_color) into every
+/// pixel the cluster paints. Gather the original colors (composited over
+/// white, like the metric's reference) at the cluster's VISIBLE member
+/// pixels and pick the fill with the best within-tolerance coverage: the
+/// current fill first, then the most frequent exact original colors (count
+/// desc, rgb key asc). The current fill wins ties, so fills only change on
+/// measured gain.
+///
+/// `visible` must be the member indices not covered by any later-painted
+/// cluster: a fill only affects the pixels where the cluster is topmost,
+/// so hidden members must not vote (they belong to the covering cluster's
+/// decision). The same formulation as the binary-layer recolor, applied to
+/// the color path clusters the WASM tracer produces.
+fn recolor_cluster_fill(
+    cluster: &ColorCluster,
+    visible: &[u32],
+    originals: &[u8],
+) -> String {
+    const TOLERANCE: i16 = 24;
+    const TOP_CANDIDATES: usize = 8;
+
+    let current = cluster.residue_color();
+    let mut counts: HashMap<u32, usize> = HashMap::new();
+    let mut members: Vec<(u8, u8, u8)> = Vec::new();
+    for index in visible {
+        let o = (*index as usize) * 4;
+        if o + 3 >= originals.len() {
+            continue;
+        }
+        let (r, g, b, a) = (
+            originals[o],
+            originals[o + 1],
+            originals[o + 2],
+            originals[o + 3],
+        );
+        let rgb = if a == 255 {
+            (r, g, b)
+        } else if a == 0 {
+            (255, 255, 255)
+        } else {
+            // Composite over white like the metric's reference.
+            let af = a as u32;
+            let inv = 255 - af;
+            (
+                ((r as u32 * af + 255 * inv + 127) / 255) as u8,
+                ((g as u32 * af + 255 * inv + 127) / 255) as u8,
+                ((b as u32 * af + 255 * inv + 127) / 255) as u8,
+            )
+        };
+        members.push(rgb);
+        *counts
+            .entry(((rgb.0 as u32) << 16) | ((rgb.1 as u32) << 8) | (rgb.2 as u32))
+            .or_insert(0) += 1;
+    }
+    if members.is_empty() {
+        return current.to_hex_string();
+    }
+
+    // Count desc, rgb key asc (same tie order as the probe).
+    let mut top: Vec<(u32, usize)> = counts.into_iter().collect();
+    top.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    top.truncate(TOP_CANDIDATES);
+
+    let cur_key = ((current.r as u32) << 16) | ((current.g as u32) << 8) | (current.b as u32);
+    let mut candidates: Vec<(u8, u8, u8)> = vec![(current.r, current.g, current.b)];
+    for (key, _) in &top {
+        if *key != cur_key {
+            candidates.push((
+                ((*key >> 16) & 0xff) as u8,
+                ((*key >> 8) & 0xff) as u8,
+                (*key & 0xff) as u8,
+            ));
+        }
+    }
+
+    let coverage = |c: (u8, u8, u8)| -> usize {
+        members
+            .iter()
+            .filter(|m| {
+                (m.0 as i16 - c.0 as i16).abs() <= TOLERANCE
+                    && (m.1 as i16 - c.1 as i16).abs() <= TOLERANCE
+                    && (m.2 as i16 - c.2 as i16).abs() <= TOLERANCE
+            })
+            .count()
+    };
+
+    let mut best = candidates[0];
+    let mut best_cov = coverage(best);
+    for c in candidates.into_iter().skip(1) {
+        let cov = coverage(c);
+        if cov > best_cov {
+            best_cov = cov;
+            best = c;
+        }
+    }
+    format!("#{:02X}{:02X}{:02X}", best.0, best.1, best.2)
+}
+
 fn build_color_output(
     width: u32,
     height: u32,
     clusters: &ColorClusters,
     options: &TraceOptions,
+    originals: Option<&[u8]>,
 ) -> TraceOutput {
     let mut layers: Vec<TraceLayer> = Vec::new();
     let mut layer_lookup: HashMap<String, usize> = HashMap::new();
@@ -438,8 +577,39 @@ fn build_color_output(
     let mut path_count = 0usize;
 
     let view = clusters.view();
-    for cluster in view.clusters_output.iter().rev().map(|index| view.get_cluster(*index)) {
-        let fill_color = cluster.residue_color().to_hex_string();
+    // Paint order: later entries cover earlier ones. Each cluster's visible
+    // set is its member indices minus the members of later-painted clusters
+    // (front-to-back claiming). The recolor optimizes the fill over the
+    // visible set only, mirroring the topmost-pixel probe exactly.
+    let paint_order: Vec<&ColorCluster> = view
+        .clusters_output
+        .iter()
+        .rev()
+        .map(|index| view.get_cluster(*index))
+        .collect();
+    let total_pixels = width as usize * height as usize;
+    let mut visible_sets: Vec<Vec<u32>> = Vec::with_capacity(paint_order.len());
+    if originals.is_some() {
+        let mut claimed = vec![false; total_pixels];
+        let mut reversed: Vec<Vec<u32>> = Vec::with_capacity(paint_order.len());
+        for cluster in paint_order.iter().rev() {
+            let mut vis = Vec::new();
+            for index in cluster.iter() {
+                let i = *index as usize;
+                if i < total_pixels && !claimed[i] {
+                    claimed[i] = true;
+                    vis.push(*index);
+                }
+            }
+            reversed.push(vis);
+        }
+        visible_sets = reversed.into_iter().rev().collect();
+    }
+    for (order, cluster) in paint_order.iter().enumerate() {
+        let fill_color = match originals {
+            Some(orig) => recolor_cluster_fill(cluster, &visible_sets[order], orig),
+            None => cluster.residue_color().to_hex_string(),
+        };
         let compound = cluster.to_compound_path(
             &view,
             false,

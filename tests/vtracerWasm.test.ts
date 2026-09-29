@@ -6,6 +6,7 @@ import { toVTracerOptions } from "@/lib/vectorize/vtracerOptions";
 import {
   initSync,
   trace_rgba_to_json,
+  trace_rgba_to_json_with_originals,
 } from "@/public/vendor/vtracer/vtracer_wasm.js";
 
 const wasmBytes = (() => {
@@ -285,5 +286,64 @@ describe("vtracer WASM pipeline", () => {
     }
     expect(minX).toBeGreaterThanOrEqual(49);
     expect(maxX).toBeLessThanOrEqual(151);
+  });
+
+  it("recolors color-path cluster fills from the original pixels", () => {
+    // Solid square whose "prepped" pixels sit outside the scoring
+    // tolerance of the original colors (mimics median/posterize/vote
+    // color shift). The recolor must recover the original fill.
+    const width = 80;
+    const height = 80;
+    const prepped = new Uint8Array(width * height * 4);
+    const original = new Uint8Array(width * height * 4);
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const i = (y * width + x) * 4;
+        const inside = x >= 20 && x < 60 && y >= 20 && y < 60;
+        const pc = inside ? [150, 100, 50] : [255, 255, 255];
+        const oc = inside ? [180, 130, 80] : [255, 255, 255];
+        prepped[i] = pc[0];
+        prepped[i + 1] = pc[1];
+        prepped[i + 2] = pc[2];
+        prepped[i + 3] = 255;
+        original[i] = oc[0];
+        original[i + 1] = oc[1];
+        original[i + 2] = oc[2];
+        original[i + 3] = 255;
+      }
+    }
+    const opts = JSON.stringify(defaultOptions());
+    const recolored = JSON.parse(
+      trace_rgba_to_json_with_originals(width, height, prepped, original, opts),
+    ) as TraceOutput;
+    const plain = JSON.parse(
+      trace_rgba_to_json(width, height, prepped, opts),
+    ) as TraceOutput;
+    const squareRecolored = recolored.layers.find(
+      (l) => l.color !== "#FFFFFF",
+    );
+    const squarePlain = plain.layers.find((l) => l.color !== "#FFFFFF");
+    expect(squarePlain).toBeDefined();
+    expect(squarePlain!.color).toBe("#966432");
+    expect(squareRecolored).toBeDefined();
+    expect(squareRecolored!.color).toBe("#B48250");
+    // The white background fill is untouched in both.
+    expect(recolored.layers.some((l) => l.color === "#FFFFFF")).toBe(true);
+  });
+
+  it("keeps the current fill when the originals are within tolerance", () => {
+    // Original pixels equal the prepped pixels: nothing to recover, so the
+    // recolor export must produce the same fills as the plain export.
+    const { width, height, pixels } = logoPixels();
+    const opts = JSON.stringify(defaultOptions());
+    const recolored = JSON.parse(
+      trace_rgba_to_json_with_originals(width, height, pixels, pixels, opts),
+    ) as TraceOutput;
+    const plain = JSON.parse(
+      trace_rgba_to_json(width, height, pixels, opts),
+    ) as TraceOutput;
+    expect(recolored.layers.map((l) => l.color).sort()).toEqual(
+      plain.layers.map((l) => l.color).sort(),
+    );
   });
 });
