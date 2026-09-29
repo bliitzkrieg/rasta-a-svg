@@ -4,6 +4,7 @@ import {
   adaptiveMajorityVote,
   majorityVoteImageData,
   MAJORITY_VOTE_MAX_CHANGE_FRACTION,
+  MAJORITY_VOTE_MAX_COLOR_SHIFT,
 } from "@/lib/image/majorityVote";
 
 function makePixels(
@@ -106,13 +107,22 @@ describe("majorityVoteImageData", () => {
 
 describe("adaptiveMajorityVote", () => {
   it("keeps the vote on flat art and skips it on complex content", () => {
-    // Flat art: vote changes almost nothing, so the voted image is kept.
+    // Flat art: vote changes almost nothing, so the voted image is kept,
+    // except the lone red outlier, whose 255-shift repaint is reverted by
+    // the color-shift cap (it keeps its red).
     const flat = makePixels(8, 8, (x, y) =>
       x === 3 && y === 3 ? [255, 0, 0, 255] : [0, 0, 0, 255],
     );
     const flatOut = adaptiveMajorityVote(flat, 8, 8);
     const flatVoted = majorityVoteImageData(flat, 8, 8);
-    expect(flatOut).toEqual(flatVoted);
+    const center = (3 * 8 + 3) * 4;
+    expect(flatOut[center]).toBe(255);
+    expect(flatOut[center + 1]).toBe(0);
+    // All other pixels match the voted image.
+    for (let i = 0; i < flatOut.length; i += 1) {
+      if (i >= center && i < center + 4) continue;
+      expect(flatOut[i]).toBe(flatVoted[i]);
+    }
 
     // Noise: every pixel differs from its neighbors, so the vote would
     // repaint everything; the original must be kept instead.
@@ -128,5 +138,32 @@ describe("adaptiveMajorityVote", () => {
 
   it("exposes a 0.10 change-fraction gate", () => {
     expect(MAJORITY_VOTE_MAX_CHANGE_FRACTION).toBe(0.1);
+  });
+
+  it("reverts vote moves larger than the color-shift cap, keeps small ones", () => {
+    expect(MAJORITY_VOTE_MAX_COLOR_SHIFT).toBe(24);
+    // A lone red outlier on black: the vote would repaint it black
+    // (shift 255), so the guard reverts it to red.
+    const pixels = makePixels(8, 8, (x, y) =>
+      x === 3 && y === 3 ? [255, 0, 0, 255] : [0, 0, 0, 255],
+    );
+    const out = adaptiveMajorityVote(pixels, 8, 8);
+    const center = (3 * 8 + 3) * 4;
+    expect(out[center]).toBe(255);
+    expect(out[center + 1]).toBe(0);
+    expect(out[center + 2]).toBe(0);
+    expect(out[center + 3]).toBe(255);
+    // Everywhere else the vote's smoothing is preserved (all black here).
+    const corner = 0;
+    expect(out[corner]).toBe(0);
+
+    // A near-background outlier: the vote nudges it by 5 (within the cap),
+    // so the voted color is kept.
+    const near = makePixels(8, 8, (x, y) =>
+      x === 3 && y === 3 ? [250, 0, 0, 255] : [255, 0, 0, 255],
+    );
+    const nearOut = adaptiveMajorityVote(near, 8, 8);
+    expect(nearOut[center]).toBe(255);
+    expect(nearOut[center + 3]).toBe(255);
   });
 });
