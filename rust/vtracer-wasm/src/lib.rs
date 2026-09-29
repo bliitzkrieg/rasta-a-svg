@@ -95,7 +95,7 @@ fn default_flat_cluster_max_delta() -> i32 {
 /// its own layer instead. Bounds the color drift chained shallow
 /// merges accumulate on grainy content.
 fn default_max_merge_spread() -> i32 {
-    128
+    64
 }
 
 #[derive(Debug, Serialize)]
