@@ -144,6 +144,11 @@ const RECOLOR_TOLERANCE = 24;
  * candidates (plus the current palette color, which is always tried).
  */
 const RECOLOR_TOP_CANDIDATES = 16;
+/**
+ * Flat-region guard only applies to layers with at least this many
+ * pixels, so degenerate speck layers keep the conservative tie-break.
+ */
+const RECOLOR_FLAT_MIN_PIXELS = 16;
 
 /**
  * Recolor each binary-layer fill against the ORIGINAL (pre-prep) image.
@@ -219,8 +224,28 @@ export function recolorPaletteFills(
       fills.push(palette[r]);
       continue;
     }
-    const top = [...counts[r].entries()]
-      .sort((a, b) => b[1] - a[1] || a[0] - b[0])
+    const sorted = [...counts[r].entries()].sort(
+      (a, b) => b[1] - a[1] || a[0] - b[0],
+    );
+    // Flat-region guard: when one exact original color dominates a
+    // substantial layer, it is the true fill. The coverage vote below can
+    // otherwise elect a less-frequent anti-aliased fringe blend (it sits
+    // mid-gradient, so it covers the body plus more fringe within
+    // tolerance), dulling the whole layer to a color the eye reads as
+    // wrong even though the scoring tolerance cannot see the shift.
+    // Shaded or gradient layers have no dominant color and keep the
+    // coverage vote, which is what recovers their true tones. The pixel
+    // minimum keeps degenerate speck layers on the conservative
+    // tie-break below.
+    const [modeKey, modeCount] = sorted[0];
+    if (
+      members.length >= RECOLOR_FLAT_MIN_PIXELS &&
+      modeCount / members.length >= 0.5
+    ) {
+      fills.push(keyToRgb(modeKey));
+      continue;
+    }
+    const top = sorted
       .slice(0, RECOLOR_TOP_CANDIDATES)
       .map(([key]) => keyToRgb(key));
     const current = palette[r];

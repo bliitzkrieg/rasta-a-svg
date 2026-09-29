@@ -268,4 +268,26 @@ describe("recolorPaletteFills", () => {
       [177, 177, 177],
     ]);
   });
+
+  it("picks the dominant original color on flat regions, not a fringe blend", () => {
+    // Flat orange body (60px) with an anti-aliased fringe gradient (40px).
+    // The coverage vote would elect a mid-fringe blend (it covers the body
+    // plus more fringe within tolerance), dulling the whole layer; the
+    // dominant true color must win instead.
+    const fringe: Array<[number, number, number]> = [
+      [255, 115, 18],
+      [255, 120, 22],
+      [255, 125, 26],
+      [255, 130, 30],
+    ];
+    const original = makePixels(100, 1, (x) =>
+      x < 60 ? [255, 102, 0, 255] : [...fringe[(x - 60) % 4], 255],
+    );
+    const prepped = makePixels(100, 1, () => [255, 104, 4, 255]);
+    const palette = topOpaquePalette(prepped, 100, 1, 1);
+    const ranks = paletteRanks(prepped, 100, 1, palette);
+    expect(recolorPaletteFills(original, 100, 1, palette, ranks)).toEqual([
+      [255, 102, 0],
+    ]);
+  });
 });
