@@ -20,5 +20,5 @@ export const DEFAULT_SETTINGS: ConversionSettings = {
   tinyMergeMaxNeighborSpread: 0,
   tinyMergeMaxPixelSpread: 0,
   flatClusterMaxDelta: 96,
-  maxMergeSpread: 64,
+  maxMergeSpread: 32,
 };
