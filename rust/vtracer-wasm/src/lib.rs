@@ -186,8 +186,11 @@ fn default_path_precision() -> u32 {
     8
 }
 
-/// When > 0 and the requested mode is "spline", clusters at or below this
-/// pixel area are traced with Polygon simplification instead of Spline.
+/// When > 0 and the requested mode is "spline", binary clusters at or below
+/// this pixel area are traced with Polygon simplification instead of Spline.
+/// (The color path no longer uses this threshold: flat color clusters of any
+/// area take the exact pixel-corner walk and non-flat ones take Polygon, as
+/// the spline smoother measured net-negative on the honest metric.)
 /// Fitted splines bow outward past the true pixel boundary on small features
 /// (halftone dots render ~19% too dark), while pixel-corner polygons trace
 /// them tightly. Large smooth curves keep the spline look.
@@ -247,24 +250,28 @@ fn color_cluster_simplify_mode(
     view: &ClustersView,
     options: &TraceOptions,
 ) -> PathSimplifyMode {
-    if options.mode == "spline"
-        && options.polygonMaxArea > 0
-        && cluster.area() <= options.polygonMaxArea
-    {
-        // Flat components of any size take the exact pixel-corner walk when
-        // exactFlatPolygons is set: it reproduces binary art near-perfectly
-        // and the harness now measures thin features exactly.
+    if options.mode == "spline" {
+        // Flat clusters of any area take the exact pixel-corner walk when
+        // exactFlatPolygons is set: it reproduces hard pixel-art edges
+        // exactly, while the staircase-cutting polygon simplify and the
+        // spline smoother both dither such boundaries by about a pixel.
+        // Non-flat clusters take the polygon simplify at any area: the
+        // spline smoother (outset plus bezier fit) is measured net-negative
+        // on the honest metric, it misplaces boundaries on shaded and
+        // grainy content and gains nothing on smooth content, while the
+        // plain cut polygon stays tight to the walked boundary. This
+        // mirrors the binary path, which already exact-walks single-color
+        // clusters of any size. polygonMaxArea no longer affects the color
+        // path; it still governs the binary-cluster path below.
         if options.exactFlatPolygons
             && color_cluster_is_flat(cluster, view, options.flatClusterMaxDelta)
             && cluster.area() >= EXACT_FLAT_MIN_AREA
         {
-            PathSimplifyMode::None
-        } else {
-            PathSimplifyMode::Polygon
+            return PathSimplifyMode::None;
         }
-    } else {
-        to_simplify_mode(&options.mode)
+        return PathSimplifyMode::Polygon;
     }
+    to_simplify_mode(&options.mode)
 }
 
 /// Pick the path simplification mode for one cluster. Small clusters get

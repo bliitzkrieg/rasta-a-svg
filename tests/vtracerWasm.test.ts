@@ -89,6 +89,27 @@ function logoPixels(): { width: number; height: number; pixels: Uint8Array } {
   return { width, height, pixels };
 }
 
+/** Deterministic color noise: every cluster has wide color variation, so the
+ * default mode's polygon simplify compacts it while pixel mode exact-walks. */
+function noisyPixels(): { width: number; height: number; pixels: Uint8Array } {
+  const width = 120;
+  const height = 120;
+  const pixels = new Uint8Array(width * height * 4);
+  let seed = 123456789;
+  const rand = () => {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    return seed / 0x7fffffff;
+  };
+  for (let i = 0; i < width * height; i += 1) {
+    const o = i * 4;
+    pixels[o] = Math.floor(rand() * 256);
+    pixels[o + 1] = Math.floor(rand() * 256);
+    pixels[o + 2] = Math.floor(rand() * 256);
+    pixels[o + 3] = 255;
+  }
+  return { width, height, pixels };
+}
+
 /** Soft radial pink gradient on cream: mimics illustration-style shading. */
 function softPinkBlob(): { width: number; height: number; pixels: Uint8Array } {
   const width = 200;
@@ -127,7 +148,7 @@ describe("vtracer WASM pipeline", () => {
   });
 
   it("spline default produces smaller output than pixel mode", () => {
-    const { width, height, pixels } = logoPixels();
+    const { width, height, pixels } = noisyPixels();
     const spline = trace(width, height, pixels, defaultOptions());
     const pixel = trace(
       width,
