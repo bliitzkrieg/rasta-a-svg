@@ -4,6 +4,7 @@ import { ditherPassthroughIfDithered } from "./descreen";
 import { thinStructurePassthrough } from "./thinStructure";
 import { noisePhotoPassthrough } from "./noisePhoto";
 import { softAlphaPassthrough } from "./softAlpha";
+import { medianDamagePassthrough } from "./medianDamage";
 import { posterizeImageData } from "./posterize";
 import { adaptiveMajorityVote } from "./majorityVote";
 import { compositeAlphaOverWhite } from "./alphaComposite";
@@ -94,6 +95,16 @@ export async function decodeBlobToImageData(blob: Blob): Promise<DecodedImage> {
   // 0.9386). The gate (at least 1% partially transparent pixels and
   // the median would rewrite >= 10% of pixels) fires only on
   // wikipedia_logo across the 18-image suite.
+  // Flat artwork where the median damages thin structures likewise skips
+  // the median denoise and the edge restore: the median smears 1-2px
+  // structures (bar-chart borders, halftone dots, small text edges) that
+  // the edge restore cannot rebuild, while the tracer reproduces the raw
+  // structures faithfully (parity harness, honest end-to-end metric:
+  // chart 0.9515 to 0.9909, halftone 0.9807 to 0.9995, diagonal_text
+  // 0.9666 to 0.9725). The gate (a palette-snap tier fires on the raw
+  // pixels and the median would rewrite >= 1.5% of pixels) fires only on
+  // chart.png, halftone.png, and diagonal_text.png across the 18-image
+  // suite.
   const ditherRaw = ditherPassthroughIfDithered(raw, canvas.width, canvas.height);
   const medianDenoised =
     ditherRaw ?? medianFilter5x5(raw, canvas.width, canvas.height);
@@ -109,12 +120,19 @@ export async function decodeBlobToImageData(blob: Blob): Promise<DecodedImage> {
     thinRaw ??
     noiseRaw ??
     softAlphaPassthrough(raw, canvas.width, canvas.height, medianDenoised);
-  const denoised = softRaw ?? noiseRaw ?? thinRaw ?? medianDenoised;
+  const damageRaw =
+    ditherRaw ??
+    thinRaw ??
+    noiseRaw ??
+    softRaw ??
+    medianDamagePassthrough(raw, canvas.width, canvas.height, medianDenoised);
+  const denoised = damageRaw ?? softRaw ?? noiseRaw ?? thinRaw ?? medianDenoised;
   const restored =
     ditherRaw ??
     thinRaw ??
     noiseRaw ??
     softRaw ??
+    damageRaw ??
     adaptiveEdgeRestore(raw, denoised, canvas.width, canvas.height);
   const posterized = posterizeImageData(restored, canvas.width, canvas.height);
   const voted = adaptiveMajorityVote(posterized, canvas.width, canvas.height);
