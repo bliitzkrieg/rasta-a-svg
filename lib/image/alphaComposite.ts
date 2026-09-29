@@ -14,21 +14,24 @@
  * transparent pixels are left alone so background keying still removes
  * real transparency instead of baking in a white backdrop.
  *
- * The pass is gated: it only runs when more than 5% of pixels are
- * partially transparent. On near-opaque images the partial alpha is a
- * thin downscale fringe, and compositing it into tint bands clusters
- * slightly worse than the binary snap (parity harness: goose_balloon
- * 0.9869 to 0.9837, wikipedia_logo 0.9564 to 0.9506 ungated). With the
- * gate those images are untouched and the translucent image goes from
- * 0.4994 to 0.9916 parity (+0.0492 overall, no per-image regressions).
+ * The pass is gated: it only runs when more than 1% of pixels are
+ * partially transparent. On images with only a negligible alpha fringe
+ * the partial alpha is left for the tracer's binary snap. (Parity
+ * harness, honest end-to-end metric: lowering the gate from 5% to 1%
+ * fixes soft-alpha edge misses on sprite artwork, luca_frog 0.9907 to
+ * 0.9967, luca_sunglasses 0.9916 to 0.9973, wikipedia_logo 0.9942 to
+ * 0.9981, luca_bathtub 0.9942 to 0.9962, with no per-image regressions;
+ * the 5% gate dated from a pre-recolor pipeline. Goose_balloon is
+ * excluded by the 1% gate: its thin fringe composites into tint bands
+ * that cluster worse, 0.9948 to 0.9926.)
  *
- * Parity harness: mirrors parity.py's _composite_alpha_rgba 1:1 (round
- * half to even, same as numpy's rint); the two were cross-checked
- * byte-identical on all harness test images.
+ * Parity harness: mirrors parity.py's _gated_composite_alpha_rgba 1:1
+ * (round half to even, same as numpy's rint); the two were
+ * cross-checked byte-identical on all harness test images.
  */
 
 /** Fraction of partially transparent pixels above which compositing runs. */
-export const COMPOSITE_ALPHA_GATE = 0.05;
+export const COMPOSITE_ALPHA_GATE = 0.01;
 
 /** Round-half-to-even, matching numpy's rint behavior. */
 function bankersRound(value: number): number {

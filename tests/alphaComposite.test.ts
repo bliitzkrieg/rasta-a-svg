@@ -17,13 +17,15 @@ function rgba(width: number, height: number, fill: (x: number, y: number) => [nu
 }
 
 describe("compositeAlphaOverWhite", () => {
-  it("exposes a 5 percent partial-alpha gate", () => {
-    expect(COMPOSITE_ALPHA_GATE).toBe(0.05);
+  it("exposes a 1 percent partial-alpha gate", () => {
+    expect(COMPOSITE_ALPHA_GATE).toBe(0.01);
   });
 
   it("leaves near-opaque images untouched (gate closed)", () => {
-    // 4% partial alpha: below the gate, output must equal input.
-    const px = rgba(50, 10, (x) => (x < 2 ? [200, 100, 50, 128] : [10, 20, 30, 255]));
+    // 0.4% partial alpha: below the gate, output must equal input.
+    const px = rgba(50, 10, (x, y) =>
+      x < 1 && y < 2 ? [200, 100, 50, 128] : [10, 20, 30, 255],
+    );
     const out = compositeAlphaOverWhite(px, 50, 10);
     expect(Array.from(out)).toEqual(Array.from(px));
   });
