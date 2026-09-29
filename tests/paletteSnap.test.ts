@@ -175,7 +175,9 @@ describe("damageCheckedPaletteSnapTier", () => {
   });
 
   it("keeps tiers whose snap is harmless", () => {
-    // goose_balloon: tier 8, snap preserves ~100% within tolerance.
+    // goose_balloon: raw tier 8, upgraded to 16 by
+    // damageCheckedPaletteSnapTier (the finer snap preserves at least as
+    // much and traces better); snap preserves ~100% within tolerance.
     const gb = new Uint8ClampedArray(
       readFileSync("/tmp/ps_goose_balloon.png.in.rgba").buffer,
     );
@@ -183,7 +185,7 @@ describe("damageCheckedPaletteSnapTier", () => {
       .trim()
       .split(" ")
       .map(Number);
-    expect(damageCheckedPaletteSnapTier(gb, gw, gh)).toBe(8);
+    expect(damageCheckedPaletteSnapTier(gb, gw, gh)).toBe(16);
     // thin_lines: tier 3 (n=3), the snap is the identity.
     const tl = new Uint8ClampedArray(
       readFileSync("/tmp/ps_thin_lines.png.in.rgba").buffer,

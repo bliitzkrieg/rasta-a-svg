@@ -245,7 +245,16 @@ export function damageCheckedPaletteSnapTier(
   ) {
     return null;
   }
-  return tier;
+  // A tier-8 pick that passes the damage check is upgraded to 16. The
+  // 16-color palette contains the top 8, so the finer snap preserves at
+  // least as much of the image, and the honest metric measures 16 binary
+  // layers as better than 8 on every suite image where 8 fires and
+  // passes (chart, goose_balloon, luca_bathtub, text_logo), with zero
+  // regressions. The upgrade is deliberately not applied when the
+  // tier-8 snap fails the damage check (diagonal_text, luca_sunglasses
+  // on the suite): those measured worse under 16 binary layers than on
+  // the no-snap color-mode path, so the v1.0.16 drop stands.
+  return tier === 8 ? 16 : tier;
 }
 
 /**
