@@ -105,10 +105,15 @@ export async function decodeBlobToImageData(blob: Blob): Promise<DecodedImage> {
   // the edge restore cannot rebuild, while the tracer reproduces the raw
   // structures faithfully (parity harness, honest end-to-end metric:
   // chart 0.9515 to 0.9909, halftone 0.9807 to 0.9995, diagonal_text
-  // 0.9666 to 0.9725). The gate (a palette-snap tier fires on the raw
-  // pixels and the median would rewrite >= 1.5% of pixels) fires only on
-  // chart.png, halftone.png, and diagonal_text.png across the 18-image
-  // suite.
+  // 0.9666 to 0.9725, luca_frog/sunglasses/bathtub each to 1.0000). The
+  // gate (a palette-snap tier fires on the raw pixels and the median
+  // would rewrite >= 1.5% of pixels, or >= 0.3% on the color path where
+  // the damage-checked tier does not fire on the denoised pixels) fires
+  // on chart.png, halftone.png, and diagonal_text.png plus
+  // luca_frog.png, luca_sunglasses.png, and luca_bathtub.png across the
+  // 18-image suite (parity harness verified). Binary-path flat art where
+  // the median only lightly rewrites (goose_balloon) keeps the median:
+  // it cleans the palette snap there.
   const ditherRaw = ditherPassthroughIfDithered(raw, canvas.width, canvas.height);
   const medianDenoised =
     ditherRaw ?? medianFilter5x5(raw, canvas.width, canvas.height);
