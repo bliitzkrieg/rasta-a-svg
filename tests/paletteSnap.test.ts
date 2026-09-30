@@ -6,11 +6,14 @@ import {
   paletteSnapImageData,
   paletteSnapTier,
   snapPreservedFraction,
+  topOpaqueCoverage,
   PALETTE_SNAP_COLORS,
   PALETTE_SNAP_MIN_PRESERVED_FRACTION,
   PALETTE_SNAP_MIN_TOPK_COVERAGE,
   PALETTE_SNAP_TIER3_COLORS,
   PALETTE_SNAP_TIER3_MIN_TOP16_COVERAGE,
+  PALETTE_SNAP_TIER4_COLORS,
+  PALETTE_SNAP_TIER4_MIN_TOP32_COVERAGE,
   PALETTE_SNAP_TOLERANCE,
 } from "@/lib/image/paletteSnap";
 
@@ -177,7 +180,8 @@ describe("damageCheckedPaletteSnapTier", () => {
   it("keeps tiers whose snap is harmless", () => {
     // goose_balloon: raw tier 8, upgraded to 16 by
     // damageCheckedPaletteSnapTier (the finer snap preserves at least as
-    // much and traces better); snap preserves ~100% within tolerance.
+    // much and traces better), then to 32 by the v1.0.29 tier-4 upgrade
+    // (top-32 coverage 0.99 >= 0.9); snap preserves ~100% within tolerance.
     const gb = new Uint8ClampedArray(
       readFileSync("/tmp/ps_goose_balloon.png.in.rgba").buffer,
     );
@@ -185,7 +189,7 @@ describe("damageCheckedPaletteSnapTier", () => {
       .trim()
       .split(" ")
       .map(Number);
-    expect(damageCheckedPaletteSnapTier(gb, gw, gh)).toBe(16);
+    expect(damageCheckedPaletteSnapTier(gb, gw, gh)).toBe(32);
     // thin_lines: tier 3 (n=3), the snap is the identity.
     const tl = new Uint8ClampedArray(
       readFileSync("/tmp/ps_thin_lines.png.in.rgba").buffer,
@@ -195,6 +199,33 @@ describe("damageCheckedPaletteSnapTier", () => {
       .split(" ")
       .map(Number);
     expect(damageCheckedPaletteSnapTier(tl, tw, th)).toBe(3);
+  });
+
+  it("upgrades tier 16 to 32 only when top-32 coverage >= 0.9", () => {
+    // 16 base colors x 50px plus fringe colors within 24 of a base color
+    // (so the 16-snap preserves 100% and the damage check passes).
+    // With 16 fringe colors the top-32 coverage is 1.0 -> 32; with 41
+    // fringe colors it is 864/964 = 0.896 < 0.9 -> stays 16.
+    const build = (fringeCount: number) => {
+      const width = 16 * 50 + fringeCount * 4;
+      return makePixels(width, 1, (x) => {
+        if (x < 800) {
+          return [Math.floor(x / 50) * 16, 0, 0, 255];
+        }
+        const k = Math.floor((x - 800) / 4);
+        return [(k % 16) * 16, 10 + Math.floor(k / 16), 0, 255];
+      });
+    };
+    const wide = build(16);
+    expect(paletteSnapTier(wide)).toBe(16);
+    expect(topOpaqueCoverage(wide, PALETTE_SNAP_TIER4_COLORS)).toBe(1);
+    expect(damageCheckedPaletteSnapTier(wide, 864, 1)).toBe(32);
+    const narrow = build(41);
+    expect(paletteSnapTier(narrow)).toBe(16);
+    expect(
+      topOpaqueCoverage(narrow, PALETTE_SNAP_TIER4_COLORS),
+    ).toBeLessThan(PALETTE_SNAP_TIER4_MIN_TOP32_COVERAGE);
+    expect(damageCheckedPaletteSnapTier(narrow, 964, 1)).toBe(16);
   });
 
   it("returns null when no tier fires", () => {

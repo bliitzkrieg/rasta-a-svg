@@ -16,7 +16,7 @@ export interface DecodedImage {
   width: number;
   height: number;
   pixels: Uint8ClampedArray;
-  /** Palette-snap tier that fired (2, 8, or 16), or null when no tier did. */
+  /** Palette-snap tier that fired (n for tier 1, 16, or 32), or null when no tier did. */
   paletteTier: number | null;
   /** The decoded and resized image before any preprocessing, for the
    * binary-layer fill recolor (which matches fills to the original). */

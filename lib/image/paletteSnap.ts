@@ -124,6 +124,18 @@ export function paletteSnapImageData(
 export const PALETTE_SNAP_TIER3_COLORS = 16;
 export const PALETTE_SNAP_TIER3_MIN_TOP16_COVERAGE = 0.4;
 /**
+ * Tier 4 (shipped v1.0.29): a tier-16 pick that passes the damage check
+ * is upgraded to 32 binary layers when the top-32 opaque colors cover at
+ * least this fraction of pixels. The 32-color palette contains the top
+ * 16, so the finer snap preserves at least as much of the image within
+ * tolerance, and the honest metric measures 32 binary layers as
+ * better-or-equal than 16 on every suite image where it fires (chart,
+ * goose_balloon, text_logo). Measured top-32 coverage on the suite:
+ * chart 0.9999, goose_balloon 0.9943, text_logo 0.9960.
+ */
+export const PALETTE_SNAP_TIER4_COLORS = 32;
+export const PALETTE_SNAP_TIER4_MIN_TOP32_COVERAGE = 0.9;
+/**
  * Scoring-tolerance mirror of the parity harness TOLERANCE: a pixel
  * counts as preserved when its worst RGB channel moves by at most 24.
  */
@@ -186,6 +198,27 @@ export function paletteSnapTier(pixels: Uint8ClampedArray): number | null {
     return PALETTE_SNAP_TIER3_COLORS;
   }
   return null;
+}
+
+/**
+ * Fraction of opaque pixels covered by the top `k` opaque colors by
+ * pixel count.
+ */
+export function topOpaqueCoverage(
+  pixels: Uint8ClampedArray,
+  k: number,
+): number {
+  const counts = countColors(pixels, true);
+  const sorted = [...counts.values()].sort((a, b) => b - a);
+  let total = 0;
+  let top = 0;
+  for (let i = 0; i < sorted.length; i += 1) {
+    total += sorted[i];
+    if (i < k) {
+      top += sorted[i];
+    }
+  }
+  return total === 0 ? 0 : top / total;
 }
 
 /**
@@ -254,7 +287,23 @@ export function damageCheckedPaletteSnapTier(
   // tier-8 snap fails the damage check (diagonal_text, luca_sunglasses
   // on the suite): those measured worse under 16 binary layers than on
   // the no-snap color-mode path, so the v1.0.16 drop stands.
-  return tier === 8 ? 16 : tier;
+  const upgraded = tier === 8 ? 16 : tier;
+  // A tier-16 pick that passes the damage check is upgraded to 32 when
+  // the top-32 opaque colors cover >= 90% of pixels. The 32-color palette
+  // contains the top 16, so the finer snap preserves at least as much of
+  // the image within tolerance, and the honest metric measures 32 binary
+  // layers as better-or-equal than 16 on every suite image where it
+  // fires (chart, goose_balloon, text_logo). The coverage gate keeps the
+  // upgrade to concentrated palettes where the extra layers are real
+  // colors rather than noise splinters.
+  if (
+    upgraded === 16 &&
+    topOpaqueCoverage(pixels, PALETTE_SNAP_TIER4_COLORS) >=
+      PALETTE_SNAP_TIER4_MIN_TOP32_COVERAGE
+  ) {
+    return PALETTE_SNAP_TIER4_COLORS;
+  }
+  return upgraded;
 }
 
 /**
