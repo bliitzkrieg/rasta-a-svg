@@ -19,6 +19,9 @@ function applySourceDisplaySize(
 
 import { toVTracerOptions } from "@/lib/vectorize/vtracerOptions";
 import { traceBinaryLayers } from "@/lib/vectorize/binaryLayers";
+import { chooseTrace, pickSmallerPath } from "@/lib/vectorize/chooseTrace";
+import { toEPSLevel2 } from "@/lib/export/eps";
+import { toDXF } from "@/lib/export/dxf";
 import type {
   ConversionMetrics,
   ConversionResult,
@@ -29,10 +32,13 @@ import type {
   VectorLayer,
 } from "@/types/vector";
 
-type WorkerInMessage = { type: "convert"; payload: ConvertJobRequest };
+type WorkerInMessage =
+  | { type: "convert"; payload: ConvertJobRequest }
+  | { type: "export"; payload: { id: string; format: "eps" | "dxf"; result: Omit<ConversionResult, "svg"> } };
 type WorkerOutMessage =
   | { type: "progress"; payload: ConvertJobProgress }
   | { type: "result"; payload: ConvertJobResult }
+  | { type: "exported"; payload: { id: string; format: "eps" | "dxf"; content: string } }
   | { type: "error"; payload: ConvertJobError };
 
 type VTracerModule = {
@@ -97,6 +103,29 @@ async function loadVTracer(): Promise<VTracerModule> {
 
 self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
   const message = event.data;
+  if (message.type === "export") {
+    void (async () => {
+      try {
+        const { id, format, result } = message.payload;
+        const content = format === "eps"
+          ? toEPSLevel2(result as Omit<ConversionResult, "svg" | "eps" | "dxf">)
+          : toDXF(result as Omit<ConversionResult, "svg" | "eps" | "dxf">);
+        postMessageTyped({
+          type: "exported",
+          payload: { id, format, content },
+        });
+      } catch (error) {
+        postMessageTyped({
+          type: "error",
+          payload: {
+            id: message.payload.id,
+            error: error instanceof Error ? error.message : "Export failed",
+          },
+        });
+      }
+    })();
+    return;
+  }
   if (message.type !== "convert") {
     return;
   }
@@ -138,7 +167,8 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
       const optionsJson = JSON.stringify(options);
       let traced: VTracerTraceOutput;
       let isBinaryPath = false;
-      if (payload.paletteTier != null && options.clusteringMode === "color") {
+      const routing = chooseTrace(payload.paletteTier);
+      if (routing.paths.includes("binary") && routing.paths.includes("color") && payload.paletteTier != null) {
         // Flat artwork: trace both paths and ship the smaller SVG.
         // Both are pixel-exact, so this can never make a file bigger.
         // (Claude feedback: color is typically 3-5x smaller, binary wins on dither)
@@ -185,7 +215,11 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
         const colorTraced = JSON.parse(colorRaw) as VTracerTraceOutput;
 
         // Ship whichever SVG is smaller (both are exact)
-        if (binaryTraced.svg.length <= colorTraced.svg.length) {
+        const shippedPath = pickSmallerPath(
+          binaryTraced.svg.length,
+          colorTraced.svg.length,
+        );
+        if (shippedPath === "binary") {
           traced = binaryTraced;
           isBinaryPath = true;
         } else {
@@ -193,17 +227,30 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
           isBinaryPath = false;
         }
       } else {
-        // Color path for photos (no palette tier): use the plain tracer without
-        // originals. The residual layer would make a pixel-perfect photo ~93MB
-        // of SVG, which isn't useful to anyone. The color tracer alone is
-        // already very accurate for photos.
-        // For flat artwork with a tier, we trace both paths above and pick smaller.
-        const raw = vtracer.trace_rgba_to_json(
-          payload.width,
-          payload.height,
-          pixels,
-          optionsJson,
-        );
+        // Color path: give the tracer the pre-prep original pixels so it
+        // can re-pick each cluster's fill from the original colors at its
+        // member pixels (recovering preprocessing color damage). Falls back
+        // to the plain export if the WASM predates the recolor export.
+        const recolorTrace = vtracer.trace_rgba_to_json_with_originals;
+        const raw =
+          recolorTrace != null
+            ? recolorTrace(
+                payload.width,
+                payload.height,
+                pixels,
+                new Uint8Array(
+                  originalPixels.buffer,
+                  originalPixels.byteOffset,
+                  originalPixels.byteLength,
+                ),
+                optionsJson,
+              )
+            : vtracer.trace_rgba_to_json(
+                payload.width,
+                payload.height,
+                pixels,
+                optionsJson,
+              );
         traced = JSON.parse(raw) as VTracerTraceOutput;
       }
 
@@ -242,10 +289,6 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
                   payload.sourceWidth,
                   payload.sourceHeight,
                 ),
-            // EPS and DXF are generated on demand when the user clicks download,
-            // not upfront, to avoid the memory cost for users who only want SVG.
-            eps: "",
-            dxf: "",
           },
         },
       });

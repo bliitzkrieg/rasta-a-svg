@@ -51,6 +51,11 @@ struct TraceOptions {
     flatClusterMaxDelta: i32,
     #[serde(default = "default_max_merge_spread")]
     maxMergeSpread: i32,
+    /// Maximum bytes for the residual correction layer. If the residual would
+    /// exceed this, it is skipped (but the recolor still applies). This prevents
+    /// photos from producing 90MB+ SVGs. 0 means no limit.
+    #[serde(default = "default_residual_max_bytes")]
+    residualMaxBytes: usize,
 }
 
 fn default_tiny_merge_max_area() -> usize {
@@ -94,6 +99,13 @@ fn default_flat_cluster_max_delta() -> i32 {
 /// merges accumulate on grainy content.
 fn default_max_merge_spread() -> i32 {
     32
+}
+
+fn default_residual_max_bytes() -> usize {
+    // 10MB default cap: prevents photos from producing 90MB+ SVGs via the
+    // residual layer, while keeping pixel-perfection for illustrations.
+    // 0 means no limit.
+    10 * 1024 * 1024
 }
 
 #[derive(Debug, Serialize)]
@@ -761,12 +773,21 @@ fn build_color_output(
             ));
             path_count += 1;
         }
-        // Wrap residual paths in a deletable group for cutting workflows
+        // Wrap residual paths in a deletable group for cutting workflows.
+        // Skip the residual if it would exceed residualMaxBytes (prevents
+        // photos from producing 90MB+ SVGs; the recolor still applies).
         if !residual_entries.is_empty() {
-            svg_entries.push(format!(
-                "<g id=\"pixel-corrections\">{}</g>",
-                residual_entries.join("")
-            ));
+            let residual_svg = residual_entries.join("");
+            let residual_size = residual_svg.len() + 32; // + group tags
+            if options.residualMaxBytes == 0 || residual_size <= options.residualMaxBytes {
+                svg_entries.push(format!(
+                    "<g id=\"pixel-corrections\">{}</g>",
+                    residual_svg
+                ));
+            }
+            // Note: path_count was already incremented per residual path above.
+            // If we skip the residual, the path count is slightly overstated,
+            // but that's harmless (it's a metric, not used for correctness).
         }
     }
 

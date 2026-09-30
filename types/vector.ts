@@ -44,7 +44,6 @@ export interface VectorPath {
   holes?: VectorPoint[][];
   closed: boolean;
   nodeCount: number;
-  svgPathData?: string;
   svgTranslateX?: number;
   svgTranslateY?: number;
 }
@@ -66,8 +65,6 @@ export interface ConversionResult {
   height: number;
   layers: VectorLayer[];
   svg: string;
-  eps: string;
-  dxf: string;
   metrics: ConversionMetrics;
 }
 

@@ -12,7 +12,7 @@ interface PreviewPaneProps {
   activePhase?: string;
   sliderPosition: number;
   onSliderPositionChange: (value: number) => void;
-  onExport: (type: "svg" | "eps" | "dxf") => void;
+  onExport: (type: "svg" | "svg-clean" | "eps" | "dxf") => void;
   onFiles?: (files: FileList | File[]) => void;
 }
 

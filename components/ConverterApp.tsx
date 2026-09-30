@@ -14,8 +14,6 @@ import { usePreviewUrls } from "@/hooks/usePreviewUrls";
 import { useServiceWorkerCleanup } from "@/hooks/useServiceWorkerCleanup";
 import { useTopbarHeight } from "@/hooks/useTopbarHeight";
 import { downloadAsZip, downloadString } from "@/lib/download";
-import { toDXF } from "@/lib/export/dxf";
-import { toEPSLevel2 } from "@/lib/export/eps";
 import { APP_VERSION } from "@/lib/version";
 import { trackEvent } from "@/lib/analytics";
 import { makeQueueItem, withUpdated } from "@/lib/queueUtils";
@@ -64,7 +62,7 @@ export default function ConverterApp() {
   const hasImages = appState.queue.length > 0;
 
   const { originalUrl, vectorUrl } = usePreviewUrls(selectedItem, results);
-  useConversionWorker(appState, setAppState, setResults, setActivePhase);
+  const { requestExport } = useConversionWorker(appState, setAppState, setResults, setActivePhase);
 
   const onFiles = async (incoming: FileList | File[]) => {
     const pngs = Array.from(incoming).filter(
@@ -179,7 +177,7 @@ export default function ConverterApp() {
     });
   };
 
-  const onExport = (type: "svg" | "eps" | "dxf") => {
+  const onExport = async (type: "svg" | "svg-clean" | "eps" | "dxf") => {
     if (!selectedItem || !selectedResult) return;
     const safeName = selectedItem.fileName.replace(/\.png$/i, "");
     trackEvent("file_download", { format: type });
@@ -187,14 +185,32 @@ export default function ConverterApp() {
       downloadString(selectedResult.svg, `${safeName}.svg`, "image/svg+xml");
     }
     if (type === "eps") {
-      // Generate EPS on demand to avoid the memory cost for users who only want SVG.
-      const eps = toEPSLevel2(selectedResult);
-      downloadString(eps, `${safeName}.eps`, "application/postscript");
+      // Generate EPS in the worker to avoid freezing the tab on large results.
+      setActivePhase("Preparing EPS...");
+      try {
+        const eps = await requestExport(selectedItem.id, "eps", selectedResult);
+        downloadString(eps, `${safeName}.eps`, "application/postscript");
+      } finally {
+        setActivePhase("Idle");
+      }
     }
     if (type === "dxf") {
-      // Generate DXF on demand to avoid the memory cost for users who only want SVG.
-      const dxf = toDXF(selectedResult);
-      downloadString(dxf, `${safeName}.dxf`, "application/dxf");
+      // Generate DXF in the worker to avoid freezing the tab on large results.
+      setActivePhase("Preparing DXF...");
+      try {
+        const dxf = await requestExport(selectedItem.id, "dxf", selectedResult);
+        downloadString(dxf, `${safeName}.dxf`, "application/dxf");
+      } finally {
+        setActivePhase("Idle");
+      }
+    }
+    if (type === "svg-clean") {
+      // Clean SVG for cutting workflows: strips the pixel-corrections group.
+      const cleanSvg = selectedResult.svg.replace(
+        /<g id="pixel-corrections">.*?<\/g>/s,
+        ""
+      );
+      downloadString(cleanSvg, `${safeName}-clean.svg`, "image/svg+xml");
     }
   };
 
@@ -202,17 +218,26 @@ export default function ConverterApp() {
     (item) => item.status === "processing",
   );
 
-  const onDownloadAll = () => {
+  const onDownloadAll = async () => {
     const entries: { path: string; content: string }[] = [];
-    for (const item of appState.queue) {
-      if (item.status !== "done") continue;
-      const result = results[item.id];
-      if (!result) continue;
-      const base = item.fileName.replace(/\.png$/i, "");
-      entries.push({ path: `${base}.svg`, content: result.svg });
-      // Generate EPS and DXF on demand for the zip as well.
-      entries.push({ path: `${base}.eps`, content: toEPSLevel2(result) });
-      entries.push({ path: `${base}.dxf`, content: toDXF(result) });
+    setActivePhase("Preparing downloads...");
+    try {
+      for (const item of appState.queue) {
+        if (item.status !== "done") continue;
+        const result = results[item.id];
+        if (!result) continue;
+        const base = item.fileName.replace(/\.png$/i, "");
+        entries.push({ path: `${base}.svg`, content: result.svg });
+        // Generate EPS and DXF in the worker to avoid freezing the tab.
+        const [eps, dxf] = await Promise.all([
+          requestExport(item.id, "eps", result),
+          requestExport(item.id, "dxf", result),
+        ]);
+        entries.push({ path: `${base}.eps`, content: eps });
+        entries.push({ path: `${base}.dxf`, content: dxf });
+      }
+    } finally {
+      setActivePhase("Idle");
     }
     if (entries.length === 0) return;
     trackEvent("download_all", { file_count: entries.length / 3 });

@@ -13,6 +13,9 @@ import { DEFAULT_SETTINGS } from "@/lib/vectorize/defaultSettings";
 import { toVTracerOptions } from "@/lib/vectorize/vtracerOptions";
 import { traceBinaryLayers } from "@/lib/vectorize/binaryLayers";
 import { preprocessImageData } from "@/lib/image/preprocess";
+import { boxDownscale } from "@/lib/image/downscale";
+import { toRgba8 } from "@/lib/image/toRgba8";
+import { chooseTrace, pickSmallerPath } from "@/lib/vectorize/chooseTrace";
 import { initSync, trace_rgba_to_json, trace_rgba_to_json_with_originals } from "@/public/vendor/vtracer/vtracer_wasm.js";
 
 const wasmRaw = readFileSync(resolve(__dirname, "../../public/vendor/vtracer/vtracer_wasm_bg.wasm"));
@@ -58,18 +61,9 @@ function compare(rendered: Uint8Array, ref: Uint8Array) {
 
 function loadPng(path: string): Img {
   const p = decode(readFileSync(path));
-  const n = p.width * p.height;
-  const d = p.data;
-  const px = new Uint8ClampedArray(n * 4);
-  const s = p.depth === 16 ? 8 : 0;
-  for (let i = 0; i < n; i++) {
-    for (let c = 0; c < 3; c++) px[i * 4 + c] = d[i * p.channels + (p.channels >= 3 ? c : 0)] >> s;
-    px[i * 4 + 3] = p.channels % 2 === 0 ? d[i * p.channels + p.channels - 1] >> s : 255;
-  }
+  const px = toRgba8(p);
   return { w: p.width, h: p.height, px };
 }
-
-import { boxDownscale } from "../../lib/image/downscale";
 
 function boxDownscaleImg(img: Img, maxDim: number): Img {
   const maxSide = Math.max(img.w, img.h);
@@ -84,6 +78,8 @@ function boxDownscaleImg(img: Img, maxDim: number): Img {
 interface BenchResult {
   image: string;
   path: "binary" | "color";
+  /** Which path the app actually ships (reproduces worker routing) */
+  appPath: "binary" | "color";
   tier: number | null;
   exactWhite: number;
   exactBlack: number;
@@ -116,9 +112,14 @@ async function main() {
     const rawImg = loadPng(resolve(imagesDir, file));
     const scaled = boxDownscaleImg(rawImg, 1000);
     const prepped = preprocessImageData(scaled.px, scaled.w, scaled.h);
+    
+    // Use the shared routing logic so the bench scores what the app ships
+    const routing = chooseTrace(prepped.paletteTier);
     const tier = prepped.paletteTier ?? 32;
     
-    for (const path of ["binary", "color"] as const) {
+    // Trace the paths the router specifies, then determine appPath
+    const pathSvgs = new Map<"binary" | "color", string>();
+    for (const path of routing.paths) {
       const start = Date.now();
       let svg: string;
       
@@ -162,6 +163,8 @@ async function main() {
       const result: BenchResult = {
         image: name,
         path,
+        // appPath determined after both paths traced (see below)
+        appPath: path,
         tier: path === "binary" ? tier : null,
         exactWhite: whiteCmp.exactPct,
         exactBlack: blackCmp.exactPct,
@@ -171,12 +174,29 @@ async function main() {
         timeMs,
       };
       results.push(result);
+      pathSvgs.set(path, svg);
       
       const status = (whiteCmp.exactPct === 100 && blackCmp.exactPct === 100) ? "PASS" : "FAIL";
       if (status === "FAIL") failures++;
       
       console.log(`  ${path}: [${status}] white=${whiteCmp.exactPct.toFixed(3)}% black=${blackCmp.exactPct.toFixed(3)}% ` +
         `max=${Math.max(whiteCmp.maxErr, blackCmp.maxErr)} bytes=${svg.length} time=${timeMs}ms`);
+    }
+    
+    // Determine which path the app ships (for tier images: smaller SVG)
+    if (routing.paths.length > 1) {
+      const binarySvg = pathSvgs.get("binary");
+      const colorSvg = pathSvgs.get("color");
+      if (binarySvg && colorSvg) {
+        const shipped = pickSmallerPath(binarySvg.length, colorSvg.length);
+        // Update appPath for all results from this image
+        for (const r of results) {
+          if (r.image === name) {
+            r.appPath = shipped;
+          }
+        }
+        console.log(`  -> app ships: ${shipped} (smaller SVG)`);
+      }
     }
   }
   

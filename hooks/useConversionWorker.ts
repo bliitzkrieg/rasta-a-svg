@@ -17,6 +17,7 @@ import type {
 type WorkerOutMessage =
   | { type: "progress"; payload: ConvertJobProgress }
   | { type: "result"; payload: ConvertJobResult }
+  | { type: "exported"; payload: { id: string; format: "eps" | "dxf"; content: string } }
   | { type: "error"; payload: ConvertJobError };
 
 /**
@@ -28,9 +29,13 @@ export function useConversionWorker(
   setState: React.Dispatch<React.SetStateAction<PersistedAppState>>,
   setResults: React.Dispatch<React.SetStateAction<Record<string, ConversionResult>>>,
   setActivePhase: React.Dispatch<React.SetStateAction<string>>,
-): void {
+): {
+  requestExport: (id: string, format: "eps" | "dxf", result: ConversionResult) => Promise<string>;
+} {
   const workerRef = useRef<Worker | null>(null);
   const processingRef = useRef<string | null>(null);
+  // Pending export requests: map from `${id}:${format}` to resolve function
+  const exportResolvers = useRef(new Map<string, (content: string) => void>());
   // The worker message handler is registered once, so it reads settings
   // through a ref to avoid capturing stale values.
   const settingsRef = useRef(state.settings);
@@ -45,6 +50,15 @@ export function useConversionWorker(
 
     worker.onmessage = (event: MessageEvent<WorkerOutMessage>) => {
       const message = event.data;
+      if (message.type === "exported") {
+        const key = `${message.payload.id}:${message.payload.format}`;
+        const resolve = exportResolvers.current.get(key);
+        if (resolve) {
+          exportResolvers.current.delete(key);
+          resolve(message.payload.content);
+        }
+        return;
+      }
       if (message.type === "progress") {
         setActivePhase(message.payload.phase);
         setState((current) => ({
@@ -161,4 +175,37 @@ export function useConversionWorker(
       }
     })();
   }, [state.queue, state.settings, setState]);
+
+  const requestExport = (
+    id: string,
+    format: "eps" | "dxf",
+    result: ConversionResult,
+  ): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const worker = workerRef.current;
+      if (!worker) {
+        reject(new Error("Worker not ready"));
+        return;
+      }
+      const key = `${id}:${format}`;
+      exportResolvers.current.set(key, resolve);
+      // Strip svg string to avoid copying megabytes to the worker;
+      // the worker only needs the layers for export.
+      const { svg: _unused, ...resultWithoutSvg } = result;
+      void _unused;
+      worker.postMessage({
+        type: "export",
+        payload: { id, format, result: resultWithoutSvg },
+      });
+      // Timeout after 60 seconds
+      setTimeout(() => {
+        if (exportResolvers.current.has(key)) {
+          exportResolvers.current.delete(key);
+          reject(new Error("Export timed out"));
+        }
+      }, 60000);
+    });
+  };
+
+  return { requestExport };
 }

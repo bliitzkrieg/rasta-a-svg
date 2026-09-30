@@ -92,11 +92,14 @@ describe("toSVG export behavior", () => {
           color: "#f55255",
           paths: [
             {
-              points: [],
+              points: [
+                { x: 0, y: 0 },
+                { x: 10, y: 0 },
+                { x: 10, y: 10 },
+              ],
               holes: [],
               closed: true,
               nodeCount: 4,
-              svgPathData: "M0 0 L10 0 L10 10 Z ",
               svgTranslateX: 5,
               svgTranslateY: 6,
             },
@@ -105,7 +108,7 @@ describe("toSVG export behavior", () => {
       ]),
     );
 
-    expect(svg).toContain('d="M0 0 L10 0 L10 10 Z "');
+    expect(svg).toContain('d="M');
     expect(svg).toContain('transform="translate(5.00 6.00)"');
   });
 });

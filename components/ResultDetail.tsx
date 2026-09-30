@@ -5,7 +5,7 @@ import { ExportButtons } from "./ExportButtons";
 
 interface ResultDetailProps {
   result?: ConversionResult;
-  onExport: (type: "svg" | "eps" | "dxf") => void;
+  onExport: (type: "svg" | "svg-clean" | "eps" | "dxf") => void;
 }
 
 export function ResultDetail({ result, onExport }: ResultDetailProps) {

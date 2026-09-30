@@ -38,7 +38,7 @@ const faqs = [
   {
     question: "Will the SVG work with Cricut Design Space?",
     answer:
-      "Yes. The SVG exports use clean layered paths, one layer per color, which import directly into Cricut Design Space, Silhouette Studio (via the DXF export), and most laser cutter software. For cutting, you may want to delete the <g id=\"pixel-corrections\"> group from the SVG first, as it contains thousands of tiny 1-pixel rectangles used only for screen-perfect accuracy.",
+      "Yes. The SVG exports use clean layered paths, one layer per color, which import directly into Cricut Design Space, Silhouette Studio (via the DXF export), and most laser cutter software. For cutting, use the \"Download clean SVG\" option: it strips the pixel-correction layer (thousands of tiny 1px rectangles that make the on-screen preview pixel-perfect but would slow down a cutter). Note that EPS and DXF exports also exclude pixel corrections, as they're meant for print and CAD workflows.",
   },
   {
     question: "Is there a file size limit?",

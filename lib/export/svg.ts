@@ -120,18 +120,15 @@ export function toSVG(
       const paths = layer.paths
         .filter(
           (path) =>
-            Boolean(path.svgPathData) ||
             path.points.length >= 3 ||
             (path.holes?.some((hole) => hole.length >= 3) ?? false),
         )
         .map((path) => {
-          const d = path.svgPathData
-            ? path.svgPathData
-            : [
-                path.points.length >= 3 ? toBezierPath(path.points) : "",
-                ...(path.holes ?? [])
-                  .filter((hole) => hole.length >= 3)
-                  .map((hole) => toBezierPath(hole)),
+          const d = [
+            path.points.length >= 3 ? toBezierPath(path.points) : "",
+            ...(path.holes ?? [])
+              .filter((hole) => hole.length >= 3)
+              .map((hole) => toBezierPath(hole)),
               ]
                 .filter(Boolean)
                 .join(" ");

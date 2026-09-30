@@ -1,6 +1,7 @@
 import { decode } from "fast-png";
 import { preprocessImageData } from "./preprocess";
 import { boxDownscale } from "./downscale";
+import { toRgba8 } from "./toRgba8";
 
 export interface DecodedImage {
   width: number;
@@ -19,65 +20,41 @@ export interface DecodedImage {
 const TARGET_MAX_DIMENSION = 1000;
 
 export async function decodeBlobToImageData(blob: Blob): Promise<DecodedImage> {
-  const bitmap = await createImageBitmap(blob, { premultiplyAlpha: "none" });
-  const maxSide = Math.max(bitmap.width, bitmap.height);
+  // Decode PNG with fast-png (handles all PNG types via toRgba8), then
+  // downscale in JS with area-weighted averaging. This avoids canvas
+  // entirely: no premultiplication precision loss, no iOS Safari 16.7MP
+  // canvas limit, no 3x memory spike on the main thread, and identical
+  // results across browsers (canvas smoothing differs by browser).
+  // Note: fast-png ignores embedded color profiles (iCCP/gAMA) that browsers
+  // apply when displaying PNGs. Rare, but profiled PNGs may differ slightly.
+  const buffer = await blob.arrayBuffer();
+  const png = decode(buffer);
+  const fullPixels = toRgba8(png);
+
+  const maxSide = Math.max(png.width, png.height);
   const scale = maxSide > TARGET_MAX_DIMENSION ? TARGET_MAX_DIMENSION / maxSide : 1;
-  const outputWidth = Math.max(1, Math.round(bitmap.width * scale));
-  const outputHeight = Math.max(1, Math.round(bitmap.height * scale));
+  const outputWidth = Math.max(1, Math.round(png.width * scale));
+  const outputHeight = Math.max(1, Math.round(png.height * scale));
 
   let raw: Uint8ClampedArray;
-  let canvasWidth: number;
-  let canvasHeight: number;
-
   if (scale === 1) {
-    // No resize needed: decode PNG directly to avoid canvas premultiplication
-    // precision loss (Claude feedback item 6). The canvas path stores
-    // premultiplied pixels and un-premultiplies on getImageData, losing
-    // precision for low-alpha pixels.
-    const buffer = await blob.arrayBuffer();
-    const png = decode(buffer);
-    canvasWidth = png.width;
-    canvasHeight = png.height;
-    // fast-png returns RGBA as Uint8Array; convert to Uint8ClampedArray
-    raw = new Uint8ClampedArray(png.data);
+    raw = fullPixels;
   } else {
-    // Resize needed: decode with fast-png, then downscale in JS with
-    // area-weighted averaging. This matches the parity benchmark byte for
-    // byte, avoids canvas premultiplication loss, and is consistent across
-    // browsers (canvas smoothing differs between Chrome/Firefox/Safari).
-    // Note: fast-png only handles PNG; for other formats we still need
-    // createImageBitmap. The bitmap was already created above, so draw it
-    // to a canvas at full size first, then downscale the pixels in JS.
-    const fullCanvas = document.createElement("canvas");
-    fullCanvas.width = bitmap.width;
-    fullCanvas.height = bitmap.height;
-    const fullCtx = fullCanvas.getContext("2d", { willReadFrequently: true });
-    if (!fullCtx) {
-      throw new Error("Failed to create canvas context.");
-    }
-    fullCtx.drawImage(bitmap, 0, 0);
-    const fullPixels = fullCtx.getImageData(
-      0,
-      0,
-      bitmap.width,
-      bitmap.height,
-    ).data;
     raw = boxDownscale(
       fullPixels,
-      bitmap.width,
-      bitmap.height,
+      png.width,
+      png.height,
       outputWidth,
       outputHeight,
     );
-    canvasWidth = outputWidth;
-    canvasHeight = outputHeight;
   }
-  const prepped = preprocessImageData(raw, canvasWidth, canvasHeight);
+
+  const prepped = preprocessImageData(raw, outputWidth, outputHeight);
   return {
-    width: canvasWidth,
-    height: canvasHeight,
-    sourceWidth: bitmap.width,
-    sourceHeight: bitmap.height,
+    width: outputWidth,
+    height: outputHeight,
+    sourceWidth: png.width,
+    sourceHeight: png.height,
     pixels: prepped.pixels,
     paletteTier: prepped.paletteTier,
     originalPixels: prepped.originalPixels,

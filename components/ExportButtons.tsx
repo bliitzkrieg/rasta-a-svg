@@ -4,7 +4,7 @@ import { AppTooltip } from "./AppTooltip";
 
 interface ExportButtonsProps {
   disabled?: boolean;
-  onExport: (type: "svg" | "eps" | "dxf") => void;
+  onExport: (type: "svg" | "svg-clean" | "eps" | "dxf") => void;
   variant?: "default" | "floating";
 }
 
@@ -44,6 +44,16 @@ export function ExportButtons({
           aria-label="Download DXF"
         >
           DXF
+        </button>
+      </AppTooltip>
+      <AppTooltip content="Download SVG without pixel corrections (for cutting)">
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => onExport("svg-clean")}
+          aria-label="Download clean SVG for cutting"
+        >
+          Clean SVG
         </button>
       </AppTooltip>
     </div>
