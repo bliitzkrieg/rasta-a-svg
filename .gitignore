@@ -12,3 +12,5 @@ rust/**/target/
 /.clerk/
 
 .vercel/
+tools/parity/images/
+tools/parity/work/
