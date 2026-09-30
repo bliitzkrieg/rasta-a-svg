@@ -69,42 +69,15 @@ function loadPng(path: string): Img {
   return { w: p.width, h: p.height, px };
 }
 
-function boxDownscale(img: Img, maxDim: number): Img {
+import { boxDownscale } from "../../lib/image/downscale";
+
+function boxDownscaleImg(img: Img, maxDim: number): Img {
   const maxSide = Math.max(img.w, img.h);
   if (maxSide <= maxDim) return img;
   const scale = maxDim / maxSide;
   const w = Math.max(1, Math.round(img.w * scale));
   const h = Math.max(1, Math.round(img.h * scale));
-  const px = new Uint8ClampedArray(w * h * 4);
-  const xRatio = img.w / w;
-  const yRatio = img.h / h;
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const srcX0 = Math.floor(x * xRatio);
-      const srcX1 = Math.min(img.w, Math.ceil((x + 1) * xRatio));
-      const srcY0 = Math.floor(y * yRatio);
-      const srcY1 = Math.min(img.h, Math.ceil((y + 1) * yRatio));
-      let r = 0, g = 0, b = 0, a = 0, count = 0;
-      for (let sy = srcY0; sy < srcY1; sy++) {
-        for (let sx = srcX0; sx < srcX1; sx++) {
-          const o = (sy * img.w + sx) * 4;
-          const al = img.px[o + 3];
-          r += img.px[o] * al;
-          g += img.px[o + 1] * al;
-          b += img.px[o + 2] * al;
-          a += al;
-          count++;
-        }
-      }
-      const o = (y * w + x) * 4;
-      if (a > 0) {
-        px[o] = Math.round(r / a);
-        px[o + 1] = Math.round(g / a);
-        px[o + 2] = Math.round(b / a);
-      }
-      px[o + 3] = Math.round(a / count);
-    }
-  }
+  const px = boxDownscale(img.px, img.w, img.h, w, h);
   return { w, h, px };
 }
 
@@ -141,7 +114,7 @@ async function main() {
     console.log(`Benchmarking ${name}...`);
     
     const rawImg = loadPng(resolve(imagesDir, file));
-    const scaled = boxDownscale(rawImg, 1000);
+    const scaled = boxDownscaleImg(rawImg, 1000);
     const prepped = preprocessImageData(scaled.px, scaled.w, scaled.h);
     const tier = prepped.paletteTier ?? 32;
     

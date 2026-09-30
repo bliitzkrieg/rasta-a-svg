@@ -33,12 +33,12 @@ const faqs = [
   {
     question: "What formats can I export besides SVG?",
     answer:
-      "Every conversion also produces EPS and DXF files. Each export keeps the same layered structure, with one vector layer per quantized color.",
+      "Every conversion also produces EPS and DXF files. Each export keeps the same layered structure, with one vector layer per quantized color. Note: the pixel-correction layer (which ensures the SVG is pixel-perfect) is SVG-only and is not included in EPS/DXF exports, since those formats are intended for cutting workflows where single-pixel rectangles are not useful.",
   },
   {
     question: "Will the SVG work with Cricut Design Space?",
     answer:
-      "Yes. The SVG exports use clean layered paths, one layer per color, which import directly into Cricut Design Space, Silhouette Studio (via the DXF export), and most laser cutter software.",
+      "Yes. The SVG exports use clean layered paths, one layer per color, which import directly into Cricut Design Space, Silhouette Studio (via the DXF export), and most laser cutter software. For cutting, you may want to delete the <g id=\"pixel-corrections\"> group from the SVG first, as it contains thousands of tiny 1-pixel rectangles used only for screen-perfect accuracy.",
   },
   {
     question: "Is there a file size limit?",

@@ -110,7 +110,6 @@ struct TracePath {
     holes: Vec<Vec<TracePoint>>,
     closed: bool,
     node_count: usize,
-    svg_path_data: String,
     svg_translate_x: f64,
     svg_translate_y: f64,
 }
@@ -645,7 +644,7 @@ fn build_color_output(
             compound.to_svg_string(true, PointF64::default(), Some(options.pathPrecision));
         svg_entries.push(svg_entry(&fill_color, &svg_path_data, svg_offset));
 
-        let trace_path = compound_to_trace_path(&compound, svg_path_data, svg_offset);
+        let trace_path = compound_to_trace_path(&compound, svg_offset);
         node_count += trace_path.node_count;
         path_count += 1;
 
@@ -665,6 +664,8 @@ fn build_color_output(
     // Build residual layer for color path (Claude feedback item 2).
     // For each pixel, compare the painted fill with the original.
     // Emit exact-color rectangles for mismatches.
+    // Wrapped in <g id="pixel-corrections"> so cutting users can delete it easily.
+    let mut residual_entries: Vec<String> = Vec::new();
     if let Some(orig) = originals {
         // Build label map: pixel -> paint order index of claiming cluster
         let mut labels = vec![u32::MAX; total_pixels];
@@ -752,12 +753,20 @@ fn build_color_output(
                     a as f32 / 255.0
                 )
             };
-            svg_entries.push(format!(
+            // Collect for the pixel-corrections group (not pushed to svg_entries directly)
+            residual_entries.push(format!(
                 "<path {} d=\"{}\" />",
                 fill_attr,
                 paths.join("")
             ));
             path_count += 1;
+        }
+        // Wrap residual paths in a deletable group for cutting workflows
+        if !residual_entries.is_empty() {
+            svg_entries.push(format!(
+                "<g id=\"pixel-corrections\">{}</g>",
+                residual_entries.join("")
+            ));
         }
     }
 
@@ -813,7 +822,7 @@ fn build_binary_output(
             compound.to_svg_string(true, PointF64::default(), Some(options.pathPrecision));
         svg_entries.push(svg_entry(&fill_color, &svg_path_data, svg_offset));
 
-        let trace_path = compound_to_trace_path(&compound, svg_path_data, svg_offset);
+        let trace_path = compound_to_trace_path(&compound, svg_offset);
         node_count += trace_path.node_count;
         paths.push(trace_path);
     }
@@ -947,7 +956,6 @@ fn to_simplify_mode(mode: &str) -> PathSimplifyMode {
 
 fn compound_to_trace_path(
     compound: &CompoundPath,
-    svg_path_data: String,
     svg_offset: PointF64,
 ) -> TracePath {
     // The compound paths are already in absolute image coordinates (see
@@ -974,7 +982,6 @@ fn compound_to_trace_path(
         holes: contours,
         closed: true,
         node_count,
-        svg_path_data,
         svg_translate_x: svg_offset.x,
         svg_translate_y: svg_offset.y,
     }

@@ -196,9 +196,6 @@ export function innerSvgPaths(svg: string): string {
  * How many frequent original colors per layer are tried as fill
  * candidates (plus the current palette color, which is always tried).
  */
-// (removed RECOLOR_TOP_CANDIDATES - was only used by deleted unreachable code)
-// (removed RECOLOR_TOLERANCE - was only used by deleted unreachable code)
-// (removed RECOLOR_FLAT_MIN_PIXELS - was only used by deleted tiny-layer snap)
 
 /**
  * Recolor each binary-layer fill against the ORIGINAL (pre-prep) image.
@@ -292,9 +289,6 @@ export function recolorPaletteFills(
     // exact pixel matches. The residual layer corrects any errors, so this is
     // safe. For gradients, the mode may not be ideal, but the residual patches
     // the difference.
-    // Note: RECOLOR_FLAT_MIN_PIXELS and the 50% threshold are kept for
-    // historical reference but the tiny-layer snap was removed (v1.0.40):
-    // with the residual layer, tiny layers are exact anyway.
     fills.push(keyToRgb(modeKey));
     continue;
   }
@@ -447,9 +441,6 @@ export function traceBinaryLayers(
     originalPixels != null
       ? paletteRanksOnOriginals(originalPixels, width, height, palette)
       : paletteRanks(pixels, width, height, palette);
-  // Note: splitSoupRanks was removed in v1.0.40 (Claude measurement showed
-  // it cost 33-40% file size with no accuracy benefit; the residual layer
-  // handles blend ramps exactly).
   const fills: Rgb[] =
     originalPixels != null
       ? recolorPaletteFills(originalPixels, width, height, palette, ranks)
@@ -496,7 +487,8 @@ export function traceBinaryLayers(
       fills,
     );
     if (residualSvg) {
-      svgParts.push(residualSvg);
+      // Wrap in a deletable group for cutting workflows (Claude feedback)
+      svgParts.push(`<g id="pixel-corrections">${residualSvg}</g>`);
       pathCount += 1;
     }
   }

@@ -17,8 +17,6 @@ function applySourceDisplaySize(
   );
 }
 
-import { toDXF } from "@/lib/export/dxf";
-import { toEPSLevel2 } from "@/lib/export/eps";
 import { toVTracerOptions } from "@/lib/vectorize/vtracerOptions";
 import { traceBinaryLayers } from "@/lib/vectorize/binaryLayers";
 import type {
@@ -141,11 +139,10 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
       let traced: VTracerTraceOutput;
       let isBinaryPath = false;
       if (payload.paletteTier != null && options.clusteringMode === "color") {
-        // Flat artwork: trace each palette color as a nested binary mask
-        // and stack the masks background-first. Exact per-color walks beat
-        // the color-mode tracer's fragmented clusters on these images.
-        isBinaryPath = true;
-        const merged = traceBinaryLayers(
+        // Flat artwork: trace both paths and ship the smaller SVG.
+        // Both are pixel-exact, so this can never make a file bigger.
+        // (Claude feedback: color is typically 3-5x smaller, binary wins on dither)
+        const binaryMerged = traceBinaryLayers(
           (w, h, px, opts) => vtracer.trace_rgba_to_json(w, h, px, opts),
           payload.width,
           payload.height,
@@ -156,20 +153,17 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
           payload.sourceWidth,
           payload.sourceHeight,
         );
-        traced = {
-          width: merged.width,
-          height: merged.height,
-          layers: merged.layers,
-          svg: merged.svg,
-          metrics: merged.metrics,
+        const binaryTraced: VTracerTraceOutput = {
+          width: binaryMerged.width,
+          height: binaryMerged.height,
+          layers: binaryMerged.layers,
+          svg: binaryMerged.svg,
+          metrics: binaryMerged.metrics,
         };
-      } else {
-        // Color path: give the tracer the pre-prep original pixels so it
-        // can re-pick each cluster's fill from the original colors at its
-        // member pixels (recovering preprocessing color damage). Falls back
-        // to the plain export if the WASM predates the recolor export.
+
+        // Trace the color path as well for comparison
         const recolorTrace = vtracer.trace_rgba_to_json_with_originals;
-        const raw =
+        const colorRaw =
           recolorTrace != null
             ? recolorTrace(
                 payload.width,
@@ -188,10 +182,32 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
                 pixels,
                 optionsJson,
               );
+        const colorTraced = JSON.parse(colorRaw) as VTracerTraceOutput;
+
+        // Ship whichever SVG is smaller (both are exact)
+        if (binaryTraced.svg.length <= colorTraced.svg.length) {
+          traced = binaryTraced;
+          isBinaryPath = true;
+        } else {
+          traced = colorTraced;
+          isBinaryPath = false;
+        }
+      } else {
+        // Color path for photos (no palette tier): use the plain tracer without
+        // originals. The residual layer would make a pixel-perfect photo ~93MB
+        // of SVG, which isn't useful to anyone. The color tracer alone is
+        // already very accurate for photos.
+        // For flat artwork with a tier, we trace both paths above and pick smaller.
+        const raw = vtracer.trace_rgba_to_json(
+          payload.width,
+          payload.height,
+          pixels,
+          optionsJson,
+        );
         traced = JSON.parse(raw) as VTracerTraceOutput;
       }
 
-      if (traced.layers.length === 0) {
+      if (traced.layers.length === 0 && traced.metrics.pathCount === 0) {
         throw new Error(
           "Nothing to trace: the image looks blank or fully transparent. Try an image with visible artwork.",
         );
@@ -213,9 +229,6 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
         metrics,
       };
 
-      const eps = toEPSLevel2(baseResult);
-      const dxf = toDXF(baseResult);
-
       postMessageTyped({
         type: "result",
         payload: {
@@ -229,8 +242,10 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
                   payload.sourceWidth,
                   payload.sourceHeight,
                 ),
-            eps,
-            dxf,
+            // EPS and DXF are generated on demand when the user clicks download,
+            // not upfront, to avoid the memory cost for users who only want SVG.
+            eps: "",
+            dxf: "",
           },
         },
       });

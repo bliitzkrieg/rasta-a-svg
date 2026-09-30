@@ -1,5 +1,6 @@
 import { decode } from "fast-png";
 import { preprocessImageData } from "./preprocess";
+import { boxDownscale } from "./downscale";
 
 export interface DecodedImage {
   width: number;
@@ -40,18 +41,34 @@ export async function decodeBlobToImageData(blob: Blob): Promise<DecodedImage> {
     // fast-png returns RGBA as Uint8Array; convert to Uint8ClampedArray
     raw = new Uint8ClampedArray(png.data);
   } else {
-    // Resize needed: use canvas path (drawImage does the scaling)
-    const canvas = document.createElement("canvas");
-    canvas.width = outputWidth;
-    canvas.height = outputHeight;
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    if (!ctx) {
+    // Resize needed: decode with fast-png, then downscale in JS with
+    // area-weighted averaging. This matches the parity benchmark byte for
+    // byte, avoids canvas premultiplication loss, and is consistent across
+    // browsers (canvas smoothing differs between Chrome/Firefox/Safari).
+    // Note: fast-png only handles PNG; for other formats we still need
+    // createImageBitmap. The bitmap was already created above, so draw it
+    // to a canvas at full size first, then downscale the pixels in JS.
+    const fullCanvas = document.createElement("canvas");
+    fullCanvas.width = bitmap.width;
+    fullCanvas.height = bitmap.height;
+    const fullCtx = fullCanvas.getContext("2d", { willReadFrequently: true });
+    if (!fullCtx) {
       throw new Error("Failed to create canvas context.");
     }
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
-    ctx.drawImage(bitmap, 0, 0, outputWidth, outputHeight);
-    raw = ctx.getImageData(0, 0, outputWidth, outputHeight).data;
+    fullCtx.drawImage(bitmap, 0, 0);
+    const fullPixels = fullCtx.getImageData(
+      0,
+      0,
+      bitmap.width,
+      bitmap.height,
+    ).data;
+    raw = boxDownscale(
+      fullPixels,
+      bitmap.width,
+      bitmap.height,
+      outputWidth,
+      outputHeight,
+    );
     canvasWidth = outputWidth;
     canvasHeight = outputHeight;
   }

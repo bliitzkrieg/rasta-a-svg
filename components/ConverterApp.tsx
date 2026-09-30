@@ -14,6 +14,8 @@ import { usePreviewUrls } from "@/hooks/usePreviewUrls";
 import { useServiceWorkerCleanup } from "@/hooks/useServiceWorkerCleanup";
 import { useTopbarHeight } from "@/hooks/useTopbarHeight";
 import { downloadAsZip, downloadString } from "@/lib/download";
+import { toDXF } from "@/lib/export/dxf";
+import { toEPSLevel2 } from "@/lib/export/eps";
 import { APP_VERSION } from "@/lib/version";
 import { trackEvent } from "@/lib/analytics";
 import { makeQueueItem, withUpdated } from "@/lib/queueUtils";
@@ -185,14 +187,14 @@ export default function ConverterApp() {
       downloadString(selectedResult.svg, `${safeName}.svg`, "image/svg+xml");
     }
     if (type === "eps") {
-      downloadString(
-        selectedResult.eps,
-        `${safeName}.eps`,
-        "application/postscript",
-      );
+      // Generate EPS on demand to avoid the memory cost for users who only want SVG.
+      const eps = toEPSLevel2(selectedResult);
+      downloadString(eps, `${safeName}.eps`, "application/postscript");
     }
     if (type === "dxf") {
-      downloadString(selectedResult.dxf, `${safeName}.dxf`, "application/dxf");
+      // Generate DXF on demand to avoid the memory cost for users who only want SVG.
+      const dxf = toDXF(selectedResult);
+      downloadString(dxf, `${safeName}.dxf`, "application/dxf");
     }
   };
 
@@ -208,8 +210,9 @@ export default function ConverterApp() {
       if (!result) continue;
       const base = item.fileName.replace(/\.png$/i, "");
       entries.push({ path: `${base}.svg`, content: result.svg });
-      entries.push({ path: `${base}.eps`, content: result.eps });
-      entries.push({ path: `${base}.dxf`, content: result.dxf });
+      // Generate EPS and DXF on demand for the zip as well.
+      entries.push({ path: `${base}.eps`, content: toEPSLevel2(result) });
+      entries.push({ path: `${base}.dxf`, content: toDXF(result) });
     }
     if (entries.length === 0) return;
     trackEvent("download_all", { file_count: entries.length / 3 });
