@@ -6,6 +6,7 @@ import { toVTracerOptions } from "@/lib/vectorize/vtracerOptions";
 import {
   innerSvgPaths,
   paletteRanks,
+  paletteRanksOnOriginals,
   recolorPaletteFills,
   rgbToHex,
   topOpaquePalette,
@@ -145,6 +146,42 @@ describe("innerSvgPaths", () => {
   });
 });
 
+describe("paletteRanksOnOriginals", () => {
+  it("snaps every pixel to its nearest palette color on white-composited originals", () => {
+    // (250,250,250) is nearer to white than to black; (10,10,10) is nearer
+    // to black. Fully transparent composites to white.
+    const original = makePixels(3, 1, (x) =>
+      x === 0
+        ? [250, 250, 250, 255]
+        : x === 1
+          ? [10, 10, 10, 255]
+          : [99, 99, 99, 0],
+    );
+    const ranks = paletteRanksOnOriginals(original, 3, 1, [
+      [0, 0, 0],
+      [255, 255, 255],
+    ]);
+    expect([...ranks]).toEqual([1, 0, 1]);
+  });
+
+  it("assigns a blend pixel to the palette color its true color is nearest to", () => {
+    // A 50/50 red/white anti-aliased fringe pixel (255,128,128) is nearer to
+    // white (dist 2*127^2) than to red (dist 2*128^2); the prepped rank
+    // would have snapped it the other way after posterize shifted it.
+    const original = makePixels(1, 1, () => [255, 128, 128, 255]);
+    const ranks = paletteRanksOnOriginals(original, 1, 1, [
+      [255, 0, 0],
+      [255, 255, 255],
+    ]);
+    expect([...ranks]).toEqual([1]);
+  });
+
+  it("returns all -1 for an empty palette", () => {
+    const original = makePixels(2, 1, () => [10, 20, 30, 255]);
+    expect([...paletteRanksOnOriginals(original, 2, 1, [])]).toEqual([-1, -1]);
+  });
+});
+
 describe("traceBinaryLayers", () => {
   it("merges nested binary masks recolored to the palette", () => {
     // 16x16: black square on white. Palette tier 2.
@@ -219,6 +256,37 @@ describe("traceBinaryLayers", () => {
     expect(new Set(fills)).toEqual(new Set(["#FAFAFA", "#000000"]));
     expect(out.layers[0].color).toBe("#FAFAFA");
     expect(out.layers[1].color).toBe("#000000");
+  });
+
+  it("ranks layers on the original pixels when originalPixels are passed", () => {
+    // Prepped: [(200,200,200), (200,200,200), black, black]; tier 2 palette is
+    // [black, (200,200,200)] (count tie broken by ascending rgb key). The
+    // originals show pixel 0 was really (250,250,250) before preprocessing
+    // shifted it, so it ranks with the gray layer, not the black layer.
+    const pixels = makePixels(4, 1, (x) =>
+      x < 2 ? [200, 200, 200, 255] : [0, 0, 0, 255],
+    );
+    const original = makePixels(4, 1, (x) =>
+      x === 0 ? [250, 250, 250, 255] : x === 1 ? [10, 10, 10, 255] : [0, 0, 0, 255],
+    );
+    const bins: Uint8Array[] = [];
+    const capture = (
+      width: number,
+      height: number,
+      bin: Uint8Array,
+      optionsJson: string,
+    ): string => {
+      bins.push(bin);
+      return traceFn(width, height, bin, optionsJson);
+    };
+    traceBinaryLayers(capture, 4, 1, pixels, 2, defaultOptionsJson(), original);
+    expect(bins.length).toBe(2);
+    // Layer 0 (black): every pixel ranks >= 0, whole mask black.
+    expect([bins[0][0], bins[0][4], bins[0][8], bins[0][12]]).toEqual([0, 0, 0, 0]);
+    // Layer 1 (gray): only pixel 0 ranks >= 1; the rest stay white.
+    expect([bins[1][0], bins[1][4], bins[1][8], bins[1][12]]).toEqual([
+      0, 255, 255, 255,
+    ]);
   });
 
   it("keeps the prepped fill when the original already matches it", () => {
