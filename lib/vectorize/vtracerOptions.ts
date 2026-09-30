@@ -27,7 +27,12 @@ export interface VTracerOptions {
   tinyMergeMaxPixelSpread: number;
   flatClusterMaxDelta: number;
   maxMergeSpread: number;
+  /** Max bytes for the residual correction layer (0 = no cap). */
+  residualMaxBytes: number;
 }
+
+/** Default residual cap, shared with the Rust serde default (10 MB). */
+export const DEFAULT_RESIDUAL_MAX_BYTES = 10 * 1024 * 1024;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -80,5 +85,6 @@ export function toVTracerOptions(
       1000,
     ),
     maxMergeSpread: clamp(Math.round(settings.maxMergeSpread), 0, 765),
+    residualMaxBytes: DEFAULT_RESIDUAL_MAX_BYTES,
   };
 }

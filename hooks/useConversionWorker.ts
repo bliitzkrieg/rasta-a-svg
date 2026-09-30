@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { decodeBlobToImageData } from "@/lib/image/decode";
 import { getFileBlob, putResult } from "@/lib/storage/indexedDb";
 import { withUpdated } from "@/lib/queueUtils";
 import { trackEvent } from "@/lib/analytics";
@@ -18,6 +17,7 @@ type WorkerOutMessage =
   | { type: "progress"; payload: ConvertJobProgress }
   | { type: "result"; payload: ConvertJobResult }
   | { type: "exported"; payload: { id: string; format: "eps" | "dxf"; content: string } }
+  | { type: "exportError"; payload: { id: string; format: "eps" | "dxf"; error: string } }
   | { type: "error"; payload: ConvertJobError };
 
 /**
@@ -34,8 +34,10 @@ export function useConversionWorker(
 } {
   const workerRef = useRef<Worker | null>(null);
   const processingRef = useRef<string | null>(null);
-  // Pending export requests: map from `${id}:${format}` to resolve function
-  const exportResolvers = useRef(new Map<string, (content: string) => void>());
+  // Pending export requests: map from `${id}:${format}` to settle functions
+  const exportResolvers = useRef(
+    new Map<string, { resolve: (content: string) => void; reject: (err: Error) => void }>(),
+  );
   // The worker message handler is registered once, so it reads settings
   // through a ref to avoid capturing stale values.
   const settingsRef = useRef(state.settings);
@@ -52,10 +54,19 @@ export function useConversionWorker(
       const message = event.data;
       if (message.type === "exported") {
         const key = `${message.payload.id}:${message.payload.format}`;
-        const resolve = exportResolvers.current.get(key);
-        if (resolve) {
+        const pending = exportResolvers.current.get(key);
+        if (pending) {
           exportResolvers.current.delete(key);
-          resolve(message.payload.content);
+          pending.resolve(message.payload.content);
+        }
+        return;
+      }
+      if (message.type === "exportError") {
+        const key = `${message.payload.id}:${message.payload.format}`;
+        const pending = exportResolvers.current.get(key);
+        if (pending) {
+          exportResolvers.current.delete(key);
+          pending.reject(new Error(message.payload.error));
         }
         return;
       }
@@ -141,24 +152,15 @@ export function useConversionWorker(
       try {
         const blob = await getFileBlob(next.id);
         if (!blob) throw new Error("Missing source image data.");
-        const decoded = await decodeBlobToImageData(blob);
+        // Decoding happens in the worker: post the raw bytes and transfer
+        // the buffer so the main thread never holds the pixel data.
+        const buffer = await blob.arrayBuffer();
         const payload: ConvertJobRequest = {
           id: next.id,
-          width: decoded.width,
-          height: decoded.height,
-          sourceWidth: decoded.sourceWidth,
-          sourceHeight: decoded.sourceHeight,
-          pixels: decoded.pixels,
+          buffer,
           settings: state.settings,
-          paletteTier: decoded.paletteTier,
-          originalPixels: decoded.originalPixels,
         };
-        // Transfer (not clone) the pixel buffers: they are 4 MB each at
-        // 1000x1000 and are never reused on the main thread after this point.
-        worker.postMessage({ type: "convert", payload }, [
-          payload.pixels.buffer as ArrayBuffer,
-          payload.originalPixels.buffer as ArrayBuffer,
-        ]);
+        worker.postMessage({ type: "convert", payload }, [payload.buffer]);
       } catch (error) {
         processingRef.current = null;
         const messageText =
@@ -188,7 +190,25 @@ export function useConversionWorker(
         return;
       }
       const key = `${id}:${format}`;
-      exportResolvers.current.set(key, resolve);
+      // Exports share the worker with conversions, so an export can queue
+      // behind a long trace. Give it a generous timeout and always clear it
+      // when the export settles.
+      const timer = setTimeout(() => {
+        if (exportResolvers.current.has(key)) {
+          exportResolvers.current.delete(key);
+          reject(new Error("Export timed out"));
+        }
+      }, 300000);
+      exportResolvers.current.set(key, {
+        resolve: (content: string) => {
+          clearTimeout(timer);
+          resolve(content);
+        },
+        reject: (err: Error) => {
+          clearTimeout(timer);
+          reject(err);
+        },
+      });
       // Strip svg string to avoid copying megabytes to the worker;
       // the worker only needs the layers for export.
       const { svg: _unused, ...resultWithoutSvg } = result;
@@ -197,13 +217,6 @@ export function useConversionWorker(
         type: "export",
         payload: { id, format, result: resultWithoutSvg },
       });
-      // Timeout after 60 seconds
-      setTimeout(() => {
-        if (exportResolvers.current.has(key)) {
-          exportResolvers.current.delete(key);
-          reject(new Error("Export timed out"));
-        }
-      }, 60000);
     });
   };
 

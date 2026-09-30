@@ -20,6 +20,7 @@ function applySourceDisplaySize(
 import { toVTracerOptions } from "@/lib/vectorize/vtracerOptions";
 import { traceBinaryLayers } from "@/lib/vectorize/binaryLayers";
 import { chooseTrace, pickSmallerPath } from "@/lib/vectorize/chooseTrace";
+import { decodeBufferToImageData } from "@/lib/image/decode";
 import { toEPSLevel2 } from "@/lib/export/eps";
 import { toDXF } from "@/lib/export/dxf";
 import type {
@@ -39,6 +40,7 @@ type WorkerOutMessage =
   | { type: "progress"; payload: ConvertJobProgress }
   | { type: "result"; payload: ConvertJobResult }
   | { type: "exported"; payload: { id: string; format: "eps" | "dxf"; content: string } }
+  | { type: "exportError"; payload: { id: string; format: "eps" | "dxf"; error: string } }
   | { type: "error"; payload: ConvertJobError };
 
 type VTracerModule = {
@@ -116,9 +118,10 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
         });
       } catch (error) {
         postMessageTyped({
-          type: "error",
+          type: "exportError",
           payload: {
             id: message.payload.id,
+            format: message.payload.format,
             error: error instanceof Error ? error.message : "Export failed",
           },
         });
@@ -135,6 +138,16 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
     const startedAt = performance.now();
 
     try {
+      postMessageTyped({
+        type: "progress",
+        payload: { id: payload.id, phase: "Decoding image", progress: 5 },
+      });
+
+      // Decode off the main thread: fast-png, JS box downscale, preprocess.
+      // An 8000x8000 PNG allocates hundreds of MB here; on the main thread
+      // that froze the tab for seconds.
+      const decoded = await decodeBufferToImageData(payload.buffer);
+
       postMessageTyped({
         type: "progress",
         payload: { id: payload.id, phase: "Loading VTracer", progress: 8 },
@@ -155,33 +168,38 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
       });
 
       const pixels = new Uint8Array(
-        payload.pixels.buffer,
-        payload.pixels.byteOffset,
-        payload.pixels.byteLength,
+        decoded.pixels.buffer,
+        decoded.pixels.byteOffset,
+        decoded.pixels.byteLength,
       );
       const originalPixels = new Uint8ClampedArray(
-        payload.originalPixels.buffer,
-        payload.originalPixels.byteOffset,
-        payload.originalPixels.byteLength,
+        decoded.originalPixels.buffer,
+        decoded.originalPixels.byteOffset,
+        decoded.originalPixels.byteLength,
       );
       const optionsJson = JSON.stringify(options);
       let traced: VTracerTraceOutput;
       let isBinaryPath = false;
-      const routing = chooseTrace(payload.paletteTier);
-      if (routing.paths.includes("binary") && routing.paths.includes("color") && payload.paletteTier != null) {
+      const routing = chooseTrace(decoded.paletteTier, options.clusteringMode);
+      const tier = decoded.paletteTier;
+      if (
+        tier != null &&
+        routing.paths.includes("binary") &&
+        routing.paths.includes("color")
+      ) {
         // Flat artwork: trace both paths and ship the smaller SVG.
         // Both are pixel-exact, so this can never make a file bigger.
         // (Claude feedback: color is typically 3-5x smaller, binary wins on dither)
         const binaryMerged = traceBinaryLayers(
           (w, h, px, opts) => vtracer.trace_rgba_to_json(w, h, px, opts),
-          payload.width,
-          payload.height,
-          payload.pixels,
-          payload.paletteTier,
+          decoded.width,
+          decoded.height,
+          decoded.pixels,
+          tier,
           optionsJson,
           originalPixels,
-          payload.sourceWidth,
-          payload.sourceHeight,
+          decoded.sourceWidth,
+          decoded.sourceHeight,
         );
         const binaryTraced: VTracerTraceOutput = {
           width: binaryMerged.width,
@@ -196,8 +214,8 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
         const colorRaw =
           recolorTrace != null
             ? recolorTrace(
-                payload.width,
-                payload.height,
+                decoded.width,
+                decoded.height,
                 pixels,
                 new Uint8Array(
                   originalPixels.buffer,
@@ -207,8 +225,8 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
                 optionsJson,
               )
             : vtracer.trace_rgba_to_json(
-                payload.width,
-                payload.height,
+                decoded.width,
+                decoded.height,
                 pixels,
                 optionsJson,
               );
@@ -235,8 +253,8 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
         const raw =
           recolorTrace != null
             ? recolorTrace(
-                payload.width,
-                payload.height,
+                decoded.width,
+                decoded.height,
                 pixels,
                 new Uint8Array(
                   originalPixels.buffer,
@@ -246,8 +264,8 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
                 optionsJson,
               )
             : vtracer.trace_rgba_to_json(
-                payload.width,
-                payload.height,
+                decoded.width,
+                decoded.height,
                 pixels,
                 optionsJson,
               );
@@ -286,8 +304,8 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
               ? traced.svg
               : applySourceDisplaySize(
                   traced.svg,
-                  payload.sourceWidth,
-                  payload.sourceHeight,
+                  decoded.sourceWidth,
+                  decoded.sourceHeight,
                 ),
           },
         },

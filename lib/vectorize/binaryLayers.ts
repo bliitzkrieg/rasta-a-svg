@@ -18,6 +18,7 @@
  * are cross-checked on the harness test images (see binaryLayers.test.ts).
  */
 import type { VectorLayer } from "@/types/vector";
+import { DEFAULT_RESIDUAL_MAX_BYTES } from "./vtracerOptions";
 
 export type Rgb = [number, number, number];
 
@@ -26,7 +27,7 @@ export interface BinaryTraceOutput {
   height: number;
   layers: VectorLayer[];
   svg: string;
-  metrics: { nodeCount: number; pathCount: number };
+  metrics: { nodeCount: number; pathCount: number; pixelPerfect: boolean };
 }
 
 export type WasmTraceFn = (
@@ -312,7 +313,10 @@ export function recolorPaletteFills(
  * color gets one <path> with rectangle subpaths for runs of same-colored
  * pixels (scanned row by row). This achieves lossless output at 1:1.
  *
- * Returns the SVG path string, or null if no residual pixels.
+ * The residual is estimated from its run count before any SVG string is
+ * built (~20 bytes per run): if the estimate exceeds maxBytes (0 = no cap),
+ * the residual is skipped without allocating the huge string, and
+ * skippedByCap is true so callers can report pixelPerfect: false.
  */
 export function buildResidualLayer(
   originalPixels: Uint8ClampedArray,
@@ -320,7 +324,8 @@ export function buildResidualLayer(
   height: number,
   ranks: Int32Array,
   fills: Rgb[],
-): string | null {
+  maxBytes: number,
+): { svg: string | null; skippedByCap: boolean } {
   // Group residual pixels by exact RGBA color
   const byColor = new Map<number, { x: number; y: number }[]>();
   const n = Math.min(
@@ -370,21 +375,17 @@ export function buildResidualLayer(
   }
 
   if (byColor.size === 0) {
-    return null;
+    return { svg: null, skippedByCap: false };
   }
 
-  // For each color, scan row by row and emit rectangle subpaths for runs
-  // Note: pixels are already in row-major order (added sequentially by p),
-  // so no sort is needed.
-  const paths: string[] = [];
+  // Merge row runs per color first (cheap integer tuples), so the size can
+  // be estimated before building any SVG strings.
+  const colors: { key: number; runs: { x0: number; y: number; w: number }[] }[] =
+    [];
+  let totalRuns = 0;
   for (const [key, pixels] of byColor) {
-    const r = (key >> 24) & 0xff;
-    const g = (key >> 16) & 0xff;
-    const b = (key >> 8) & 0xff;
-    const a = key & 0xff;
-
     // Group into runs per row (pixels already sorted by y then x)
-    const subpaths: string[] = [];
+    const runs: { x0: number; y: number; w: number }[] = [];
     let i = 0;
     while (i < pixels.length) {
       const y = pixels[i].y;
@@ -400,7 +401,31 @@ export function buildResidualLayer(
         x1 = pixels[i].x;
         i += 1;
       }
-      const w = x1 - x0 + 1;
+      runs.push({ x0, y, w: x1 - x0 + 1 });
+    }
+    totalRuns += runs.length;
+    colors.push({ key, runs });
+  }
+
+  // Estimate ~20 bytes per run for path data, ~48 bytes per color for the
+  // path wrapper, plus the group tags.
+  const estimate = totalRuns * 20 + colors.length * 48 + 32;
+  if (maxBytes !== 0 && estimate > maxBytes) {
+    return { svg: null, skippedByCap: true };
+  }
+
+  // For each color, emit rectangle subpaths for runs
+  // Note: pixels are already in row-major order (added sequentially by p),
+  // so no sort is needed.
+  const paths: string[] = [];
+  for (const { key, runs } of colors) {
+    const r = (key >> 24) & 0xff;
+    const g = (key >> 16) & 0xff;
+    const b = (key >> 8) & 0xff;
+    const a = key & 0xff;
+
+    const subpaths: string[] = [];
+    for (const { x0, y, w } of runs) {
       // Rectangle: M x y h w v1 h-w z
       subpaths.push(`M${x0} ${y}h${w}v1h${-w}z`);
     }
@@ -414,7 +439,7 @@ export function buildResidualLayer(
     );
   }
 
-  return paths.join("\n");
+  return { svg: paths.join("\n"), skippedByCap: false };
 }
 
 export function traceBinaryLayers(
@@ -478,18 +503,25 @@ export function traceBinaryLayers(
   // Residual correction layer (Claude feedback item 6): pixels where the
   // predicted raster (fills[ranks[p]]) differs from the original get
   // exact rectangle paths on top. With threshold 0 this is lossless at 1:1.
+  // Capped like the Rust color-path residual (usually moot: the smaller SVG
+  // wins the tier comparison, but kept for symmetry).
+  let pixelPerfect = true;
   if (originalPixels != null) {
-    const residualSvg = buildResidualLayer(
+    const parsed = JSON.parse(optionsJson) as { residualMaxBytes?: number };
+    const residual = buildResidualLayer(
       originalPixels,
       width,
       height,
       ranks,
       fills,
+      parsed.residualMaxBytes ?? DEFAULT_RESIDUAL_MAX_BYTES,
     );
-    if (residualSvg) {
+    if (residual.svg) {
       // Wrap in a deletable group for cutting workflows (Claude feedback)
-      svgParts.push(`<g id="pixel-corrections">${residualSvg}</g>`);
+      svgParts.push(`<g id="pixel-corrections">${residual.svg}</g>`);
       pathCount += 1;
+    } else if (residual.skippedByCap) {
+      pixelPerfect = false;
     }
   }
   // Use source dimensions for display size (if provided), but keep viewBox
@@ -503,5 +535,5 @@ export function traceBinaryLayers(
     `<svg width="${displayWidth}" height="${displayHeight}" viewBox="0 0 ${width} ${height}" version="1.1" xmlns="http://www.w3.org/2000/svg">\n` +
     `${svgParts.join("\n")}\n` +
     `</svg>\n`;
-  return { width, height, layers, svg, metrics: { nodeCount, pathCount } };
+  return { width, height, layers, svg, metrics: { nodeCount, pathCount, pixelPerfect } };
 }

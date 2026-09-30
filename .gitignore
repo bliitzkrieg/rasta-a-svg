@@ -14,3 +14,5 @@ rust/**/target/
 .vercel/
 tools/parity/images/
 tools/parity/work/
+tools/parity/results/
+.browser-test/

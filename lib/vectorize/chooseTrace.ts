@@ -7,30 +7,40 @@
  * been caught: the bench would have reproduced the worker's routing exactly.
  */
 
+import type { VTracerClusteringMode } from "@/types/vector";
+
 export type TracePath = "binary" | "color";
 
 export interface TraceRouting {
   /** Which path(s) to trace */
   paths: TracePath[];
-  /** Which path the app ships (for bench reporting) */
-  appPath: TracePath;
+  /**
+   * Which path the app ships (for bench reporting). Null when the app traces
+   * both paths and ships whichever SVG is smaller; the bench fills this in
+   * after comparing sizes via pickSmallerPath.
+   */
+  appPath: TracePath | null;
 }
 
 /**
  * Decide which trace path(s) to use for an image.
  *
- * - If a palette tier fires (flat artwork): trace both paths, ship the smaller
- *   SVG. Both are pixel-exact, so this can never make a file bigger.
- * - Otherwise (photos, shaded illustrations): trace the color path with
- *   originals (for recolor + residual, gated by residualMaxBytes).
+ * - If a palette tier fires (flat artwork) and the user chose color mode:
+ *   trace both paths, ship the smaller SVG. Both are pixel-exact, so this
+ *   can never make a file bigger.
+ * - Otherwise (B/W mode, photos, shaded illustrations): trace the color path
+ *   with originals (for recolor + residual, gated by residualMaxBytes).
+ *   B/W mode never runs the binary-layer trace: it is wasted work, and it
+ *   could ship color after the user asked for B/W.
  */
-export function chooseTrace(paletteTier: number | null): TraceRouting {
-  if (paletteTier != null) {
+export function chooseTrace(
+  paletteTier: number | null,
+  clusteringMode: VTracerClusteringMode,
+): TraceRouting {
+  if (paletteTier != null && clusteringMode === "color") {
     return {
       paths: ["binary", "color"],
-      // appPath is determined after tracing both (whichever SVG is smaller)
-      // The bench sets this after comparing sizes.
-      appPath: "binary", // placeholder, bench overwrites
+      appPath: null,
     };
   }
   return {

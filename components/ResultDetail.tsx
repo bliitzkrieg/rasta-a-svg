@@ -17,6 +17,13 @@ export function ResultDetail({ result, onExport }: ResultDetailProps) {
       </div>
       {result ? (
         <div className="result-stack">
+          {!result.metrics.pixelPerfect && (
+            <p className="muted" role="note">
+              Note: this is a large, detailed image, so the pixel-correction
+              layer was skipped to keep the file size reasonable. The SVG is
+              very close but not pixel-exact.
+            </p>
+          )}
           <div className="stats">
             <div className="statCard">
               <span className="statValue">{result.metrics.nodeCount}</span>

@@ -28,6 +28,7 @@ function baseResult(paths: ConversionResult["layers"]): Omit<ConversionResult, "
       nodeCount: 0,
       pathCount: 0,
       elapsedMs: 0,
+      pixelPerfect: true,
     },
   };
 }

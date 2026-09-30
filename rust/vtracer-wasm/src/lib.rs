@@ -139,6 +139,10 @@ struct TraceLayer {
 struct TraceMetrics {
     node_count: usize,
     path_count: usize,
+    /// True when the shipped SVG is pixel-exact vs the source: the residual
+    /// correction layer is present, or was unnecessary. False when the
+    /// residual was skipped by residualMaxBytes.
+    pixel_perfect: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -677,7 +681,7 @@ fn build_color_output(
     // For each pixel, compare the painted fill with the original.
     // Emit exact-color rectangles for mismatches.
     // Wrapped in <g id="pixel-corrections"> so cutting users can delete it easily.
-    let mut residual_entries: Vec<String> = Vec::new();
+    let mut residual_skipped = false;
     if let Some(orig) = originals {
         // Build label map: pixel -> paint order index of claiming cluster
         let mut labels = vec![u32::MAX; total_pixels];
@@ -726,18 +730,25 @@ fn build_color_output(
                 }
             }
         }
-        // Emit residual rectangles (row runs)
-        for (key, mut pixels) in by_color {
+        // Merge residual pixels into row runs per color. Runs are stored as
+        // (sx, sy, w) tuples (~12 bytes each), deliberately NOT formatted
+        // into SVG strings yet: for photos the residual can be tens of MB,
+        // and we estimate its serialized size from the run count first so a
+        // capped residual never allocates the huge string at all.
+        struct ResidualColor {
+            r: u8,
+            g: u8,
+            b: u8,
+            a: u8,
+            runs: Vec<(u32, u32, u32)>,
+        }
+        let mut colors: Vec<ResidualColor> = Vec::new();
+        let mut total_runs: usize = 0;
+        for (key, pixels) in by_color {
             if pixels.is_empty() {
                 continue;
             }
-            let r = ((key >> 24) & 0xff) as u8;
-            let g = ((key >> 16) & 0xff) as u8;
-            let b = ((key >> 8) & 0xff) as u8;
-            let a = (key & 0xff) as u8;
-            // Pixels are already in row-major order (pushed y-outer, x-inner above),
-            // so no sort is needed.
-            let mut paths = Vec::new();
+            let mut runs = Vec::new();
             let mut i = 0;
             while i < pixels.len() {
                 let (sx, sy) = pixels[i];
@@ -746,48 +757,60 @@ fn build_color_output(
                     ex += 1;
                     i += 1;
                 }
-                let w = ex - sx + 1;
-                if w == 1 {
-                    paths.push(format!("M{} {}h1v1h-1z", sx, sy));
-                } else {
-                    paths.push(format!("M{} {}h{}v1h-{}z", sx, sy, w, w));
-                }
+                runs.push((sx, sy, ex - sx + 1));
                 i += 1;
             }
-            let fill_attr = if a == 255 {
-                format!("fill=\"#{:02x}{:02x}{:02x}\"", r, g, b)
-            } else {
-                format!(
-                    "fill=\"#{:02x}{:02x}{:02x}\" fill-opacity=\"{:.3}\"",
-                    r,
-                    g,
-                    b,
-                    a as f32 / 255.0
-                )
-            };
-            // Collect for the pixel-corrections group (not pushed to svg_entries directly)
-            residual_entries.push(format!(
-                "<path {} d=\"{}\" />",
-                fill_attr,
-                paths.join("")
-            ));
-            path_count += 1;
+            total_runs += runs.len();
+            colors.push(ResidualColor {
+                r: ((key >> 24) & 0xff) as u8,
+                g: ((key >> 16) & 0xff) as u8,
+                b: ((key >> 8) & 0xff) as u8,
+                a: (key & 0xff) as u8,
+                runs,
+            });
         }
         // Wrap residual paths in a deletable group for cutting workflows.
         // Skip the residual if it would exceed residualMaxBytes (prevents
         // photos from producing 90MB+ SVGs; the recolor still applies).
-        if !residual_entries.is_empty() {
-            let residual_svg = residual_entries.join("");
-            let residual_size = residual_svg.len() + 32; // + group tags
-            if options.residualMaxBytes == 0 || residual_size <= options.residualMaxBytes {
+        // Estimate ~20 bytes per run for path data, ~48 bytes per color for
+        // the path wrapper, plus the group tags.
+        if !colors.is_empty() {
+            let estimate = total_runs * 20 + colors.len() * 48 + 32;
+            if options.residualMaxBytes != 0 && estimate > options.residualMaxBytes {
+                residual_skipped = true;
+            } else {
+                let mut residual_entries: Vec<String> = Vec::with_capacity(colors.len());
+                for color in &colors {
+                    let mut d = String::new();
+                    for &(sx, sy, w) in &color.runs {
+                        if w == 1 {
+                            d.push_str(&format!("M{} {}h1v1h-1z", sx, sy));
+                        } else {
+                            d.push_str(&format!("M{} {}h{}v1h-{}z", sx, sy, w, w));
+                        }
+                    }
+                    let fill_attr = if color.a == 255 {
+                        format!(
+                            "fill=\"#{:02x}{:02x}{:02x}\"",
+                            color.r, color.g, color.b
+                        )
+                    } else {
+                        format!(
+                            "fill=\"#{:02x}{:02x}{:02x}\" fill-opacity=\"{:.3}\"",
+                            color.r,
+                            color.g,
+                            color.b,
+                            color.a as f32 / 255.0
+                        )
+                    };
+                    residual_entries.push(format!("<path {} d=\"{}\" />", fill_attr, d));
+                    path_count += 1;
+                }
                 svg_entries.push(format!(
                     "<g id=\"pixel-corrections\">{}</g>",
-                    residual_svg
+                    residual_entries.join("")
                 ));
             }
-            // Note: path_count was already incremented per residual path above.
-            // If we skip the residual, the path count is slightly overstated,
-            // but that's harmless (it's a metric, not used for correctness).
         }
     }
 
@@ -799,6 +822,9 @@ fn build_color_output(
         metrics: TraceMetrics {
             node_count,
             path_count,
+            // Pixel-perfect only when the residual is present or unnecessary.
+            // Without originals there is no recolor or residual, so no claim.
+            pixel_perfect: originals.is_some() && !residual_skipped,
         },
     }
 }
@@ -867,6 +893,9 @@ fn build_binary_output(
         metrics: TraceMetrics {
             node_count,
             path_count,
+            // Intermediate binary output: the TS binary path adds its own
+            // residual and reports pixelPerfect itself.
+            pixel_perfect: false,
         },
     }
 }

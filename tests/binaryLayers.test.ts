@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_SETTINGS } from "@/lib/vectorize/defaultSettings";
 import { toVTracerOptions } from "@/lib/vectorize/vtracerOptions";
 import {
+  buildResidualLayer,
   innerSvgPaths,
   paletteRanks,
   paletteRanksOnOriginals,
@@ -375,3 +376,28 @@ describe("recolorPaletteFills", () => {
   });
 });
 
+
+describe("buildResidualLayer cap", () => {
+  it("skips the residual by cap without building the string", () => {
+    // 100x1 row of distinct colors vs a single black fill: 100 runs.
+    const original = makePixels(100, 1, (x) => [x, 100, 200, 255]);
+    const ranks = new Int32Array(100).fill(0);
+    const fills: Array<[number, number, number]> = [[0, 0, 0]];
+    const tiny = buildResidualLayer(original, 100, 1, ranks, fills, 10);
+    expect(tiny.svg).toBeNull();
+    expect(tiny.skippedByCap).toBe(true);
+    const ample = buildResidualLayer(original, 100, 1, ranks, fills, 10 * 1024 * 1024);
+    expect(ample.svg).not.toBeNull();
+    expect(ample.svg).toContain("<path");
+    expect(ample.skippedByCap).toBe(false);
+  });
+
+  it("returns null (not skipped) when nothing differs", () => {
+    const original = makePixels(4, 1, () => [10, 20, 30, 255]);
+    const ranks = new Int32Array(4).fill(0);
+    const fills: Array<[number, number, number]> = [[10, 20, 30]];
+    const out = buildResidualLayer(original, 4, 1, ranks, fills, 10 * 1024 * 1024);
+    expect(out.svg).toBeNull();
+    expect(out.skippedByCap).toBe(false);
+  });
+});

@@ -36,6 +36,7 @@ export default function ConverterApp() {
   );
   const [results, setResults] = useState<Record<string, ConversionResult>>({});
   const [activePhase, setActivePhase] = useState<string>("Idle");
+  const [exportError, setExportError] = useState<string | null>(null);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -187,9 +188,14 @@ export default function ConverterApp() {
     if (type === "eps") {
       // Generate EPS in the worker to avoid freezing the tab on large results.
       setActivePhase("Preparing EPS...");
+      setExportError(null);
       try {
         const eps = await requestExport(selectedItem.id, "eps", selectedResult);
         downloadString(eps, `${safeName}.eps`, "application/postscript");
+      } catch (error) {
+        setExportError(
+          error instanceof Error ? error.message : "EPS export failed.",
+        );
       } finally {
         setActivePhase("Idle");
       }
@@ -197,9 +203,14 @@ export default function ConverterApp() {
     if (type === "dxf") {
       // Generate DXF in the worker to avoid freezing the tab on large results.
       setActivePhase("Preparing DXF...");
+      setExportError(null);
       try {
         const dxf = await requestExport(selectedItem.id, "dxf", selectedResult);
         downloadString(dxf, `${safeName}.dxf`, "application/dxf");
+      } catch (error) {
+        setExportError(
+          error instanceof Error ? error.message : "DXF export failed.",
+        );
       } finally {
         setActivePhase("Idle");
       }
@@ -221,6 +232,7 @@ export default function ConverterApp() {
   const onDownloadAll = async () => {
     const entries: { path: string; content: string }[] = [];
     setActivePhase("Preparing downloads...");
+    setExportError(null);
     try {
       for (const item of appState.queue) {
         if (item.status !== "done") continue;
@@ -236,6 +248,11 @@ export default function ConverterApp() {
         entries.push({ path: `${base}.eps`, content: eps });
         entries.push({ path: `${base}.dxf`, content: dxf });
       }
+    } catch (error) {
+      setExportError(
+        error instanceof Error ? error.message : "Download-all export failed.",
+      );
+      return;
     } finally {
       setActivePhase("Idle");
     }
@@ -256,6 +273,15 @@ export default function ConverterApp() {
 
   return (
     <>
+      {exportError && (
+        <div
+          role="alert"
+          className={styles.exportErrorToast}
+          onClick={() => setExportError(null)}
+        >
+          Export failed: {exportError} (click to dismiss)
+        </div>
+      )}
       <main
         ref={pageRef}
         className={styles.page}

@@ -58,6 +58,10 @@ export interface ConversionMetrics {
   nodeCount: number;
   pathCount: number;
   elapsedMs: number;
+  /** False when the pixel-correction (residual) layer was skipped by the
+   * size cap, so the SVG is not pixel-exact. The UI and FAQ use this to
+   * stay honest instead of claiming pixel-perfection. */
+  pixelPerfect: boolean;
 }
 
 export interface ConversionResult {
@@ -93,17 +97,10 @@ export interface PersistedAppState {
 
 export interface ConvertJobRequest {
   id: string;
-  width: number;
-  height: number;
-  /** Original source dimensions before downscaling (for SVG display size). */
-  sourceWidth: number;
-  sourceHeight: number;
-  pixels: Uint8ClampedArray;
+  /** The raw uploaded file bytes. The worker decodes them off the main
+   * thread (fast-png, downscale, preprocess) before tracing. */
+  buffer: ArrayBuffer;
   settings: ConversionSettings;
-  /** Palette-snap tier that fired during decode (2, 8, or 16), if any. */
-  paletteTier: number | null;
-  /** Pre-prep decoded pixels, for the binary-layer fill recolor. */
-  originalPixels: Uint8ClampedArray;
 }
 
 export interface ConvertJobProgress {

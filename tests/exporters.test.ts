@@ -27,7 +27,8 @@ const baseResult = {
   metrics: {
     nodeCount: 4,
     pathCount: 1,
-    elapsedMs: 1
+    elapsedMs: 1,
+    pixelPerfect: true
   }
 };
 
