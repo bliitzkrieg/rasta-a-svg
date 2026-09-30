@@ -250,17 +250,29 @@ async function main() {
   const POLYGON_JSON = JSON.stringify(
     toVTracerOptions({ ...DEFAULT_SETTINGS, mode: "polygon" }),
   );
-  const matrixImages = files.slice(0, 3);
+  // Pick the first 3 images that actually have a tier; the matrix tests
+  // nothing (but still passes) if the first files alphabetically have no
+  // tier (Claude review). Fail loudly if there are none.
+  const matrixImages: string[] = [];
+  for (const file of files) {
+    const rawImg = loadPng(resolve(imagesDir, file));
+    const scaled = boxDownscaleImg(rawImg, 1000);
+    const prepped = preprocessImageData(scaled.px, scaled.w, scaled.h);
+    if (prepped.paletteTier != null) {
+      matrixImages.push(file);
+      if (matrixImages.length >= 3) break;
+    }
+  }
+  if (matrixImages.length === 0) {
+    console.error("Settings matrix: no tier images found, cannot verify Polygon mode");
+    failures++;
+  }
   for (const file of matrixImages) {
     const name = basename(file, ".png");
     const rawImg = loadPng(resolve(imagesDir, file));
     const scaled = boxDownscaleImg(rawImg, 1000);
     const prepped = preprocessImageData(scaled.px, scaled.w, scaled.h);
-    if (prepped.paletteTier == null) {
-      console.log(`  ${name}: no tier, skipping matrix`);
-      continue;
-    }
-    const tier = prepped.paletteTier;
+    const tier = prepped.paletteTier ?? 32;
     const binaryOut = traceBinaryLayers(
       (w, h, p, j) => trace_rgba_to_json(w, h, p, j),
       scaled.w,
