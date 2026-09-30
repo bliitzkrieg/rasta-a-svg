@@ -1,146 +1,160 @@
-# Pixel-perfect SVG feedback
+# Pixel-perfect SVG feedback (re-review)
 
-Review of `main` at `073698c` (v1.0.33), including the v1.0.0 to v1.0.33 commit series from the past few days.
-Goal: at the same size, the rendered SVG should match the original PNG pixel for pixel.
+This re-review covers `main` at `f7b0d8a`: all commits since the first feedback (`f7b1a9d` v1.0.34 → `f7b0d8a`, i.e. v1.0.34-v1.0.38 plus the parity-harness commits).
 
-**Summary:** the last few days of work steadily raised the parity-suite score (about 0.92 to 0.99999). Several problems still block a true pixel-for-pixel match, and the scoring metric can't see most of them. The first three items below are either one-line bugs or clear correctness gaps, and they show up on almost every image. Items 4 and 5 are about measurement: until the harness measures exactly, it will keep reporting ~1.0 on output that isn't pixel perfect. Item 6 is the structural change needed to actually reach zero error.
+**Summary:** the residual correction layer works. On opaque flat art the output is now **exactly** pixel-perfect: 100% of pixels identical when rendered with a real SVG renderer, over both white and black backgrounds. Four things still keep it from being pixel-perfect in general:
 
----
-
-## P0: the output isn't the same size or shape as the PNG
-
-### 1. The SVG is sized in `pt`, so it renders at 133% of the PNG
-
-Every SVG writer emits `width="{w}pt" height="{h}pt"`:
-
-- `rust/vtracer-wasm/src/lib.rs:741` (`build_svg`, color path and every binary-layer sub-trace)
-- `lib/vectorize/binaryLayers.ts:611` (the merged binary-layer SVG that ships)
-- `lib/export/svg.ts:150` (`toSVG`, currently only used by tests)
-
-1pt = 4/3 CSS px. A 500x500 PNG turns into an SVG whose intrinsic size is 666.67x666.67 px. Anywhere the SVG is shown at its natural size (`<img>` without CSS sizing, Figma/Illustrator import, browser tab, `<object>`), it's 33% larger. It also stops landing on the pixel grid: each source pixel covers 1.333 device pixels, so every exact pixel-corner edge gets anti-aliased.
-
-**Fix:** drop the unit (`width="{w}" height="{h}"`, which means px). This is a one-line change in each writer. The Rust change needs `npm run build:vtracer-wasm`. In the meantime, the worker could rewrite the header on `traced.svg`.
-
-### 2. Images over 1000 px are downscaled before tracing and never scaled back
-
-`lib/image/decode.ts:26` `TARGET_MAX_DIMENSION = 1000`. A 2400x1600 PNG is resampled to 1000x667 with `imageSmoothingQuality = "high"`, traced, and exported with a 1000x667 viewBox and size.
-
-- Even with item 1 fixed, the SVG's intrinsic size doesn't match the PNG.
-- Resampling blends neighbouring pixels into new colors. So `originalPixels`, which the recolor passes treat as ground truth, is already a filtered copy and not the original.
-- At the original size, about 5.8 source pixels map to each traced pixel, so fine detail is gone for good.
-
-**Fix (minimum):** keep the traced viewBox but set `width`/`height` to the source dimensions, so the display size matches.
-**Fix (real):** trace at full resolution, at least in a "pixel-perfect" mode. The limit is performance: the binary path allocates a `w*h*4` mask per layer (52 layers on goose), so full-res needs either a single label-map pass in WASM or a streamed mask built per layer. `CompareSlider.tsx:70` already tells users about the downscale, which is honest but rules out pixel-perfect output for every large input.
-
-### 3. Transparency isn't preserved
-
-There are four separate paths where alpha is lost. The metric can't catch any of them because it composites the reference over white (see item 4).
-
-1. **Binary path paints an opaque background.** `paletteRanksOnOriginals` (`binaryLayers.ts:97`) assigns every pixel a rank, including `alpha == 0` pixels, which it composites to white and snaps to the nearest palette color. Layer 0's mask is `rank >= 0` (`binaryLayers.ts:585`), which is every pixel, so the bottom layer is a full-canvas shape. A logo on a transparent background comes out on a solid white or light-colored rectangle. Commit v1.0.30 does this on purpose ("soft backgrounds are painted instead of left to the page"). That helps the white-composited score but breaks the output on any non-white page.
-   **Fix:** give `alpha == 0` pixels rank `-1` so no mask includes them.
-2. **Partial alpha gets baked into white.** `compositeAlphaOverWhite` (`lib/image/alphaComposite.ts:56`, gate at 1% partial-alpha pixels) makes anti-aliased fringes opaque and white-blended. The SVG looks correct on white and shows a light halo on any dark or colored background.
-3. **Below the 1% gate, alpha is thresholded at 128.** `flatten_alpha` (`lib.rs:336`) runs on both paths, which turns soft edges into hard ones.
-4. **Transparent regions can be painted when the keying heuristic misses them.** `should_key_image` (`lib.rs:750`) only samples 5 rows (0, h/4, h/2, 3h/4, h-1) and needs 40% of `width` to be `alpha == 0`. A sticker with an opaque border and a transparent cut-out that misses those rows isn't keyed. Its transparent pixels are then clustered on their leftover RGB and painted, and the recolor turns them white.
-   **Fix:** key whenever any `alpha == 0` pixel exists, using a full scan.
-
-**Fix (general):** carry alpha through the whole pipeline. Treat RGBA, not RGB, as the color key. Emit `fill-opacity` per region, using the region's alpha mode or mean from the originals. Don't composite over white. The SVG then matches the PNG on any background.
+1. **Soft (semi-transparent) edges on the binary path come out wrong, by up to 212 levels.** It's a one-character fix, verified below.
+2. **The color path** (photos, shaded art) has no residual layer. It's still about 36% exact.
+3. **The committed harness doesn't measure the shipped code.** It mirrors v1.0.33 logic and can't parse the residual layer.
+4. **`npm run check` is red** on a clean clone.
 
 ---
 
-## P1: the metric can't see these errors
+## How I measured
 
-### 4. The "honest metric" is too loose for pixel-perfect work
+The harness can't measure the current code (see item 5), so I rendered the real pipeline myself. I called `traceBinaryLayers` / `trace_rgba_to_json_with_originals` from vitest with the checked-in WASM, rendered the SVG with **resvg** (`@resvg/resvg-js`) at 1:1, and compared it with the original composited over the **same** background, both white and black. "Exact" means all three RGB channels are equal. The prep pipeline (median, posterize, and so on) was skipped, so `pixels = originalPixels`. That changes geometry, but not whether the residual layer makes the output exact.
 
-From the code comments and commit messages, the parity harness counts a pixel as a match when its **worst channel is within ±24**, compares against the reference **composited over white**, and rasterizes with its **own rasterizer** (inset 0.25) rather than a browser.
+| Input | Path | Over white | Over black | SVG size |
+|---|---|---|---|---|
+| Synthetic 48×48 anti-aliased disc, opaque | binary + residual | **100.00%** exact | **100.00%** | 17 KB |
+| Same, color path | color (no residual) | 36.15%, max err 11 | 36.15% | — |
+| Synthetic disc, **soft alpha edge on transparent bg** | binary + residual | 97.40%, **max err 212** | 95.31%, max err 210 | 8.8 KB |
+| `example/input/GooseBalloon.png` (4000² → 1000² box-downscale), tier 32 | binary + residual | 99.564%, max err 65 | 99.532%, max err 254 | 10.23 MB |
+| `example/input/GooseCupid.png`, same | binary + residual | 99.465%, max err 61 | 99.397%, max err 254 | 21.69 MB |
+| **With fix 1 below applied** (soft-alpha disc) | binary + residual | **100.00%** | **100.00%** | 2.6 KB |
+| **With fix 1** GooseBalloon | binary + residual | **100.000%** | **100.000%** | **7.16 MB** |
+| **With fix 1** GooseCupid | binary + residual | **100.000%** | **100.000%** | **18.74 MB** |
 
-- ±24 per channel is a clearly visible difference (for example `#FF6600` vs `#E74E00`). Two commits already ran into this: v1.0.26 (the suite rewarded a dulled, washed-out orange and a `#F0F0F0` background painted where it should be white) and v1.0.33 (visible halo lines that "the scoring tolerance cannot see"). Both were found by eye, not by the suite. Expect more like them.
-- Compositing over white hides everything in item 3.
-- A custom rasterizer isn't what users see. Browser anti-aliasing, fill-rule handling, and `pt` scaling (item 1) aren't modelled.
-- `parity.py` isn't in the repo. The TS code says it "mirrors parity.py 1:1", but the source of truth can't be reviewed or re-run from a clone.
-
-**Recommendations:**
-- Commit the harness, for example under `scripts/parity/`, along with the 18 suite images.
-- Render the SVG with a real renderer at DPR 1 and at the PNG's pixel size: `@resvg/resvg-js`, or headless Chromium via Playwright, which is closest to what users see.
-- Report exact metrics next to the tolerant one: **% of pixels exactly equal** (RGBA), mean absolute error, max error, PSNR, and p99 ΔE2000.
-- Compare RGBA over at least white **and** black (or a checkerboard), so alpha errors count as errors.
-- The pipeline is now about 30 hand-tuned gates fitted to 18 images, each tuned for a +0.0001 gain on the same set. Add a held-out image set so a gate that fits only the suite shows up as a regression.
-
-### 5. Fill selection optimizes the ±24 metric, not accuracy
-
-Both recolor passes pick the candidate that covers the most member pixels within ±24:
-
-- `recolorPaletteFills`: `binaryLayers.ts:192` `RECOLOR_TOLERANCE = 24`
-- `recolor_cluster_fill`: `lib.rs:486` `TOLERANCE = 24`
-
-Within the tolerance, a color 23 levels off scores the same as an exact match. For a pixel-perfect target:
-
-- To maximize exact matches, the best fill is the region's **mode** color. The v1.0.26 dominant-color guard already does this, but only when the mode reaches 50%. Use the mode everywhere.
-- To minimize error, the per-channel **mean** (L2) or **median** (L1) of the visible original pixels is best. That value usually isn't among the top-16 exact colors, so it's never even tried. Add it as a candidate.
-- Break ties by total error, not by "keep current".
-- The v1.0.33 tiny-layer snap and the v1.0.32 soup split both work around a coverage objective that can't express "closest color". Item 6 makes both unnecessary.
+With fix 1, both Goose images are **exactly** pixel-perfect over any background, and the files are **smaller** (-30% and -14%). I applied the patch only locally to measure it and reverted it; nothing in this commit changes code.
 
 ---
 
-## P2: getting to exactly zero error
+## Status of the previous items
 
-### 6. Add a residual correction layer (this is the main one)
-
-One flat fill per region can't reproduce anti-aliased edges or gradients exactly: a 1-3 px fringe contains many distinct colors. The current path to higher scores is more layers (tier 8 → 16 → 32, soup splitting), which inflates file size (goose went 2.4 MB → 7.4 MB → 17.4 MB) and still isn't exact.
-
-The pipeline is already in a good position here. **With default settings, every emitted path is an exact pixel-corner walk with integer coordinates:**
-
-- Color path: `mode: "spline"`, `exactFlatPolygons: true`, and `flatClusterMaxDelta: 255`, so every cluster takes `PathSimplifyMode::None`.
-- Binary path: `exactFlatPolygons` with `EXACT_FLAT_MIN_AREA = 1`.
-
-So the rendered SVG at 1:1 is fully predictable without rendering: it's just the painted label map (for each pixel, the fill of the topmost region covering it). That means you can:
-
-1. Build the predicted raster in-process: stack the binary masks with their fills, or claim clusters front-to-back with their fills. This is the same visible-set logic `build_color_output` already uses.
-2. Compute the residual: pixels where predicted ≠ original RGBA.
-3. Group residual pixels by exact RGBA, trace each group with the existing binary tracer (exact walk), and paint them as a final layer on top, with `fill-opacity` for alpha.
-
-With threshold 0, the output is **lossless at 1:1** by construction, for any input. With a threshold T or a byte budget (fix the worst pixels first), there's a single, understandable quality/size control in place of a stack of gates. Add a harness check that the predicted raster equals the real render, which also catches item 1 and any fill-rule problems.
-
-A simpler variant is a user-selectable **"Pixel-perfect" preset**: skip all preprocessing and trace every exact RGBA color's connected components as their own regions. It's exact for flat art, icons, and pixel art. For photos it produces very large files, so gate it on the unique-color count or leave it opt-in.
-
-### 7. Preprocessing moves boundaries that the recolor can't move back
-
-Geometry comes from the prepped pixels (median, unsharp, 64-level posterize, majority vote, palette snap/merge), while fills come from the originals. Recolor fixes colors but not boundaries, so a 1 px edge shifted by the median or vote is baked into the path. The passthrough gates (dither, thin, noise, soft alpha, median damage) exist because of this. In a pixel-perfect mode, trace the raw pixels, or rely on item 6 to patch the moved pixels.
-
-### 8. Decode fidelity
-
-`decode.ts:29/45`: `createImageBitmap(blob)` → `drawImage` → `getImageData`. Canvas 2D stores premultiplied alpha, so low-alpha pixels lose precision when read back (at alpha 10, each RGB channel survives as only 11 distinct levels).
-
-- Use `createImageBitmap(blob, { premultiplyAlpha: "none" })`. Keep the default `colorSpaceConversion`, so values stay in the same sRGB the browser uses to display the PNG.
-- Or decode the PNG bytes directly. `scripts/convert-cli.js` already contains a pure-JS PNG decoder.
-- Skip the canvas round-trip entirely when no resize is needed (item 2).
+| # | Item | Status |
+|---|---|---|
+| 1 | `pt` → px | Done in TS (`binaryLayers.ts`, `svg.ts`) and via `stripPtUnits` in the worker. **Rust `build_svg` still emits `pt`** (`lib.rs:742`), even though v1.0.38 rebuilt the WASM. Fix it there and delete `stripPtUnits`. |
+| 2 | 1000 px downscale | Minimum fix only, and **binary path only** (see item 3). Output is exact against the *downscaled* image; at source size it's a 4× upscale. |
+| 3.1 | Transparent background painted | Fixed for `alpha == 0`. **Not fixed for `0 < alpha < 255`**, and the residual layer made that case worse. See item 1. |
+| 3.2 | Composite over white | Unchanged. It no longer matters on the binary path once item 1 is fixed (fills and residual come from the originals). Still bakes in white on the color path. |
+| 3.3 | `flatten_alpha` at 128 | Only the redundant call on the binary path was removed. The color path still thresholds at 128, so 3.3 is **not** addressed. |
+| 3.4 | Keying heuristic | Changed, but it's now stricter than before. See item 4. |
+| 4 | Harness | Committed, but it doesn't measure the shipped code. See item 5. |
+| 5 | Mode fill | Done. |
+| 6 | Residual layer | Done for the binary path and verified exact. Color path missing. See item 2. |
+| 8 | Decode precision | `premultiplyAlpha: "none"` **doesn't fix it**. See item 6. |
 
 ---
 
-## P3: comparison UI and cleanup
+## 1. P0: soft-alpha pixels are painted opaque, then tinted by the residual
 
-### 9. The compare view can't show pixel-level differences
+`paletteRanksOnOriginals` (`lib/vectorize/binaryLayers.ts:112`) only gives rank `-1` to `alpha === 0`. A pixel with `alpha = 40` still gets a rank, so an opaque layer paints it with a full-strength fill. `buildResidualLayer` then compares its **white-composited** color to the fill. When they differ, it paints `fill=<orig rgb> fill-opacity=<a>` **on top of the opaque layer**. The result is `orig·a + layerFill·(1−a)`: blended over the layer color, not over the page.
 
-`CompareSlider.tsx` and `.compare-base` (`app/globals.css:883-891`) scale both images with `object-fit: contain`. At any zoom other than 1:1, and on any HiDPI display (DPR 1.25/1.5/2 is standard on Windows laptops), the PNG is bilinear-resampled while the SVG is re-rasterized with sharp edges. They look different even when the trace is perfect, and the view can also hide real differences.
+For a red logo's anti-aliased edge, a nearly transparent fringe pixel renders nearly solid red: error 212 over white, and the pixel is opaque, so it's wrong on every background.
 
-- Add an "actual pixels" 1:1 mode at integer zooms, with `image-rendering: pixelated` on the PNG.
-- Add a difference overlay (`mix-blend-mode: difference`, or a heatmap) and an "X% pixels identical" readout. Compute it by drawing the SVG into a `w×h` canvas and diffing against `originalPixels`.
-- Put the compare canvas on a checkerboard so a painted background (item 3.1) is visible.
+**Fix (verified above):**
 
-### 10. Dead smoothing exporter
+```ts
+// paletteRanksOnOriginals, binaryLayers.ts:112
+if (originalPixels[o + 3] !== 255) {   // was: === 0
+  ranks[p] = -1;
+  continue;
+}
+```
 
-`lib/export/svg.ts` `toSVG` builds Catmull-Rom Bézier curves from the polygon points and uses `pt` units. The worker ships `traced.svg` instead, so this only runs in tests. If it's ever wired in, it would undo the exact walks. Either delete it, or fix the units and add a flag to skip smoothing.
+No other change is needed. The `r < 0` branch of `buildResidualLayer` already emits exact RGB plus `fill-opacity` for unpainted, non-transparent pixels, and since no layer paints under them, they blend over the page exactly as the PNG does.
 
-### 11. File-size notes (secondary to accuracy, but they compound with item 6)
+Once this lands:
+- The `oa === 0 → match = false` branch (`binaryLayers.ts:608`) is unreachable and would emit useless `fill-opacity="0.000"` paths. Delete it.
+- The `0 < oa < 255` compare branch below it is also unreachable. Delete it.
+- Update the `paletteRanksOnOriginals` test and add a partial-alpha case.
 
-- Nested binary masks (rank `r` covers every rank ≥ `r`) re-trace the outlines of every layer above, so boundary data grows roughly O(layers × boundary). With exact integer edges at 1:1 there are no seams, so non-nested per-color regions would render identically and be much smaller. The one tradeoff is conflation seams at fractional zoom. A 1 px dilation under the neighboring region fixes that more cheaply than full nesting.
-- Exact-walk path data could use relative `h`/`v` commands with no decimals, since coordinates are integers. That would be noticeably smaller than the current absolute coordinates.
+## 2. P1: the color path has no residual layer
 
----
+The worker only builds a residual layer for `traceBinaryLayers`. Every image where no palette tier fires (photos, shaded illustrations: about half the 18-image suite) goes through `trace_rgba_to_json_with_originals` and ships with one flat fill per cluster, which was 36% exact on the synthetic disc. Also, v1.0.37's `sourceWidth`/`sourceHeight` display size is only wired into the binary path, so color-path SVGs of large images still display at the traced size.
+
+**Fix:**
+- In `build_color_output` (`lib.rs`), turn the existing `claimed: Vec<bool>` into `label: Vec<u32>` (paint index per pixel; 4 MB at 1000²).
+- Compute the residual in Rust against `originals`, and emit the same row-run rectangle paths as `buildResidualLayer`, using `fill-opacity` for `alpha < 255`.
+- Or return the label map plus fills and reuse the TS function.
+- Verify that "last-painted cluster whose members include p" matches the real render in stacked mode. The resvg check below will tell you.
+- Apply the source display size in the worker to **both** paths. The simplest way is one header rewrite that replaces `width`/`height` on whatever SVG comes back.
+
+## 3. P1: the residual layer silently breaks when filterSpeckle > 1
+
+The prediction `fills[splitRanks[p]]` assumes every mask pixel gets traced. The settings UI lets users set Filter Speckle up to 16 (`SettingsPanel.tsx:71`). The binary tracer then drops clusters smaller than `filterSpeckle²`, so those pixels are painted by a lower layer while the prediction assumes the higher one. The residual misses them, so the output isn't exact anymore.
+
+**Fix:** force `filterSpeckle: 1` in `binaryOptionsJson` inside `traceBinaryLayers`. The residual layer is the accuracy mechanism now, and speckle filtering there only removes pixels the residual would then have to re-add.
+
+## 4. P1: `should_key_image` is now stricter than before
+
+`lib.rs:759` keys only when **20% of all pixels** are fully transparent. The old heuristic needed about 8% of the sampled pixels. A logo with, say, 10% transparent area is now **not** keyed, and its transparent pixels are clustered and painted.
+
+**Fix:** key whenever at least one pixel has `alpha == 0` (threshold `1`). Keying costs nothing when it isn't needed.
+
+## 5. P1: the harness doesn't measure what ships
+
+`tools/parity/parity.py`:
+- `score_exact` (`:1284`) is defined but **never called**. `main` only reports the ±24 `score` (`:1814`). The README says `exact_pct`, `mae`, `max_err`, and `psnr` are reported, but they aren't.
+- Its Python "mirror" is stale:
+  - `_binary_ranks_on_originals` still ranks transparent pixels.
+  - `_recolor_binary_fills` still uses the v1.0.26 guard plus the ±24 vote.
+  - There's no residual layer.
+  - It writes `pt`.
+
+  So it measures v1.0.33, and none of v1.0.34-v1.0.38 has been measured by it.
+- `_parse_svg_paths` (`:1111`) only tokenizes uppercase `M C Z L`, and its regex needs `d=` to come right after `fill=`. Residual paths (`h`/`v`/`z`, plus `fill-opacity`) are dropped or mis-parsed, so the harness would score the output as if the residual layer weren't there.
+- It renders onto an RGB white canvas (`:1251`) with a custom PIL rasterizer. There's no alpha and no black background.
+- `trace.mjs` hard-codes `/home/hatch/workspace/...`, so it can't run from a clone.
+
+**Recommendation:** stop maintaining a Python copy of the TS pipeline, because it will keep drifting. Measure the real code instead:
+
+1. Add `@resvg/resvg-js` and a PNG decoder (`pngjs`) as devDependencies.
+2. Add a vitest suite (for example `tests/pixelPerfect.test.ts`) that:
+   - loads the checked-in WASM the way `tests/vtracerWasm.test.ts` already does;
+   - runs `traceBinaryLayers` and the color path on synthetic fixtures generated in code (no committed images needed): an opaque anti-aliased disc, a disc with a soft alpha edge on a transparent background, a gradient, 1 px lines, and a 2-color checkerboard;
+   - renders each SVG with `new Resvg(svg, { background, fitTo: { mode: "width", value: w } })`;
+   - asserts **100% exact** over both `"white"` and `"black"`.
+
+   Each image takes about 1 s, which is how the table above was produced.
+3. Keep the 18-image suite as an optional, fixture-gated benchmark that reports exact %, max error, and SVG bytes per image.
+
+## 6. P2: `premultiplyAlpha: "none"` doesn't fix decode precision
+
+(My first review suggested this option, and it was the wrong fix.) The flag only affects the `ImageBitmap`. `drawImage` into a 2D canvas stores premultiplied pixels anyway, and `getImageData` un-premultiplies them, so low-alpha pixels still lose precision.
+
+**Fix:** when no resize is needed, decode the PNG bytes directly, for example with `fast-png` or `UPNG.js`, or with the pure-JS decoder already in `scripts/convert-cli.js`. Use the canvas path only for downscaling.
+
+## 7. P2: `npm run check` fails on a clean clone
+
+- **Lint:** `tools/parity/trace.mjs` errors with `'process' is not defined` and `'console' is not defined`. Add `tools/` to the eslint `ignores`, or give it node globals.
+- **Tests:** 9 tests (in `paletteSnap.test.ts` and `majorityVote.test.ts`) read fixtures from `/tmp/ps_*.png.*` and `/tmp/mv_*`, which only exist on the harness machine. On Windows they fail with `ENOENT C:\tmp\...`. Guard them with `it.skipIf(!existsSync(path))`, or generate the fixtures in the test.
+- **Missing tests:** there are none for `buildResidualLayer`. Add unit tests (no residual when the prediction is exact, correct runs and colors, `fill-opacity` for partial alpha) plus the resvg end-to-end check from item 5.
+
+## 8. P2: cleanup now that the residual layer exists
+
+- `recolorPaletteFills`: the coverage-vote code after `fills.push(keyToRgb(modeKey)); continue;` (`binaryLayers.ts:315-345`) is unreachable. Delete it, and fix the comments that still describe the flat-region guard and tie-break.
+- **Tiny-layer snap** (`:350`) and **`splitSoupRanks`** (`:705`) existed only to work around the ±24 objective:
+  - The snap overrides the mode fill, which is exactly the fill that minimizes residual size.
+  - Soup sub-balls pick fills by ±24 coverage (not mode), and each one re-traces a nested full-canvas mask.
+
+  Measure SVG size with both disabled. The expectation is the same 100% exactness in fewer bytes.
+- **`buildResidualLayer` efficiency** (`:557`):
+  - Pixels are visited in row-major order already, so the `{x, y}` objects and `pixels.sort` (`:640`) are unnecessary. Keep a `number[]`/`Int32Array` of `p` per color, or build runs in the same pass.
+  - Merge vertically adjacent runs of the same width.
+  - The Goose images produce 30-67k residual colors, so this pass dominates both runtime and output size.
+- **Worker:** the `// v1.0.33: force rebuild` comment is stale. `stripPtUnits` sits above the imports; move it below them, or remove it after the Rust fix.
+
+## 9. P3: still open from the first review
+
+- **Full resolution** (item 2). The residual layer makes the cost predictable, since it's proportional to the number of mismatched pixels. The remaining obstacle is memory in `recolorPaletteFills` (`number[][]` of every pixel) and in the per-layer RGBA masks.
+- **Compare UI** (item 9): no 1:1 view, no difference overlay, no checkerboard. The UI parts are in `design.md`.
 
 ## Suggested order
 
-1. Item 1 (`pt` → px) and item 3.1 (don't paint the transparent background). These are small, safe, and fix most images immediately.
-2. Item 4: commit the harness, render with resvg or Chromium, add the exact-match % and a black-background comparison. Re-baseline. Expect scores to drop, and that drop is the real gap.
-3. Item 6 (residual layer): it reaches exactly zero at 1:1 and makes items 5 and 7 and most of the per-image gates optional.
-4. Items 2, 3.2-3.4, and 8: full resolution and a real alpha channel.
-5. Items 9-11.
+1. Item 1 (one character) plus its tests. This makes every binary-path image exact on any background.
+2. Items 5 and 7: the resvg vitest suite, lint ignore, and fixture guards, so every later change is measured on the real code.
+3. Items 3 and 4 (small).
+4. Item 2 (color-path residual layer and display size).
+5. Items 6, 8, and 9.
