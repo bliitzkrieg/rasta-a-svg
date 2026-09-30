@@ -107,6 +107,12 @@ export function paletteRanksOnOriginals(
   const n = Math.min(originalPixels.length, width * height * 4);
   for (let p = 0; p < width * height && p * 4 + 3 < n; p += 1) {
     const o = p * 4;
+    // Fully transparent pixels get rank -1 so no layer paints them.
+    // They show as transparent instead of a painted white rectangle.
+    if (originalPixels[o + 3] === 0) {
+      ranks[p] = -1;
+      continue;
+    }
     const a = originalPixels[o + 3] / 255;
     const inv = 1 - a;
     const r = originalPixels[o] * a + 255 * inv;
@@ -608,7 +614,7 @@ export function traceBinaryLayers(
   const svg =
     `<?xml version="1.0" encoding="UTF-8" ?>\n` +
     `<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\n` +
-    `<svg width="${width}pt" height="${height}pt" viewBox="0 0 ${width} ${height}" version="1.1" xmlns="http://www.w3.org/2000/svg">\n` +
+    `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" version="1.1" xmlns="http://www.w3.org/2000/svg">\n` +
     `${svgParts.join("\n")}\n` +
     `</svg>\n`;
   return { width, height, layers, svg, metrics: { nodeCount, pathCount } };

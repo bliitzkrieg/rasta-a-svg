@@ -150,7 +150,7 @@ describe("innerSvgPaths", () => {
 describe("paletteRanksOnOriginals", () => {
   it("snaps every pixel to its nearest palette color on white-composited originals", () => {
     // (250,250,250) is nearer to white than to black; (10,10,10) is nearer
-    // to black. Fully transparent composites to white.
+    // to black. Fully transparent pixels get rank -1 (not painted).
     const original = makePixels(3, 1, (x) =>
       x === 0
         ? [250, 250, 250, 255]
@@ -162,7 +162,7 @@ describe("paletteRanksOnOriginals", () => {
       [0, 0, 0],
       [255, 255, 255],
     ]);
-    expect([...ranks]).toEqual([1, 0, 1]);
+    expect([...ranks]).toEqual([1, 0, -1]);
   });
 
   it("assigns a blend pixel to the palette color its true color is nearest to", () => {

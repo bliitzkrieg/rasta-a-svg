@@ -1,6 +1,15 @@
 /// <reference lib="webworker" />
 // v1.0.33: force rebuild for edge-fragment snap fix
 
+// Strip pt units from SVG dimensions (WASM emits pt, we want px).
+// Harmless on input already in px; can be removed after WASM is fixed.
+function stripPtUnits(svg: string): string {
+  return svg.replace(
+    /(<svg[^>]*?)width="(\d+)pt" height="(\d+)pt"/,
+    '$1width="$2" height="$3"',
+  );
+}
+
 import { toDXF } from "@/lib/export/dxf";
 import { toEPSLevel2 } from "@/lib/export/eps";
 import { toVTracerOptions } from "@/lib/vectorize/vtracerOptions";
@@ -202,7 +211,7 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
           id: payload.id,
           result: {
             ...baseResult,
-            svg: traced.svg,
+            svg: stripPtUnits(traced.svg),
             eps,
             dxf,
           },
