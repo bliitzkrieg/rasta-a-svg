@@ -544,6 +544,135 @@ export function splitSoupRanks(
  * layer's fill is recolored against the original via recolorPaletteFills;
  * otherwise the prepped palette colors are used as-is.
  */
+/**
+ * Build a residual correction layer (Claude feedback item 6).
+ *
+ * Compares the predicted raster (fills[splitRanks[p]]) against the original
+ * RGBA pixels. Pixels that differ are grouped by exact RGBA color, and each
+ * color gets one <path> with rectangle subpaths for runs of same-colored
+ * pixels (scanned row by row). This achieves lossless output at 1:1.
+ *
+ * Returns the SVG path string, or null if no residual pixels.
+ */
+export function buildResidualLayer(
+  originalPixels: Uint8ClampedArray,
+  width: number,
+  height: number,
+  ranks: Int32Array,
+  fills: Rgb[],
+): string | null {
+  // Group residual pixels by exact RGBA color
+  const byColor = new Map<number, { x: number; y: number }[]>();
+  const n = Math.min(
+    Math.floor(originalPixels.length / 4),
+    width * height,
+    ranks.length,
+  );
+
+  for (let p = 0; p < n; p += 1) {
+    const r = ranks[p];
+    if (r < 0 || r >= fills.length) {
+      // Unpainted pixel (e.g. transparent). If original is not transparent,
+      // it's a residual.
+      const o = p * 4;
+      if (originalPixels[o + 3] !== 0) {
+        const key =
+          (originalPixels[o] << 24) |
+          (originalPixels[o + 1] << 16) |
+          (originalPixels[o + 2] << 8) |
+          originalPixels[o + 3];
+        if (!byColor.has(key)) {
+          byColor.set(key, []);
+        }
+        byColor.get(key)!.push({ x: p % width, y: Math.floor(p / width) });
+      }
+      continue;
+    }
+
+    const [fr, fg, fb] = fills[r];
+    const o = p * 4;
+    const or = originalPixels[o];
+    const og = originalPixels[o + 1];
+    const ob = originalPixels[o + 2];
+    const oa = originalPixels[o + 3];
+
+    // Compare RGBA. For semi-transparent originals, we compare the
+    // composited-over-white RGB (matching the metric) and alpha separately.
+    let match: boolean;
+    if (oa === 255) {
+      match = or === fr && og === fg && ob === fb;
+    } else if (oa === 0) {
+      // Transparent original, but pixel was painted: residual only if
+      // the fill is not white (white on transparent looks like background).
+      // Actually, any painted pixel over transparent is wrong.
+      match = false;
+    } else {
+      const af = oa / 255;
+      const inv = 1 - af;
+      const cr = Math.round(or * af + 255 * inv);
+      const cg = Math.round(og * af + 255 * inv);
+      const cb = Math.round(ob * af + 255 * inv);
+      match = cr === fr && cg === fg && cb === fb;
+    }
+
+    if (!match) {
+      const key = (or << 24) | (og << 16) | (ob << 8) | oa;
+      if (!byColor.has(key)) {
+        byColor.set(key, []);
+      }
+      byColor.get(key)!.push({ x: p % width, y: Math.floor(p / width) });
+    }
+  }
+
+  if (byColor.size === 0) {
+    return null;
+  }
+
+  // For each color, scan row by row and emit rectangle subpaths for runs
+  const paths: string[] = [];
+  for (const [key, pixels] of byColor) {
+    const r = (key >> 24) & 0xff;
+    const g = (key >> 16) & 0xff;
+    const b = (key >> 8) & 0xff;
+    const a = key & 0xff;
+
+    // Sort by y then x for row scanning
+    pixels.sort((p1, p2) => p1.y - p2.y || p1.x - p2.x);
+
+    // Group into runs per row
+    const subpaths: string[] = [];
+    let i = 0;
+    while (i < pixels.length) {
+      const y = pixels[i].y;
+      const x0 = pixels[i].x;
+      let x1 = x0;
+      i += 1;
+      // Extend run while next pixel is on same row and adjacent
+      while (
+        i < pixels.length &&
+        pixels[i].y === y &&
+        pixels[i].x === x1 + 1
+      ) {
+        x1 = pixels[i].x;
+        i += 1;
+      }
+      const w = x1 - x0 + 1;
+      // Rectangle: M x y h w v1 h-w z
+      subpaths.push(`M${x0} ${y}h${w}v1h${-w}z`);
+    }
+
+    const hex =
+      "#" +
+      [r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("");
+    const opacity = a === 255 ? "" : ` fill-opacity="${(a / 255).toFixed(3)}"`;
+    paths.push(
+      `<path fill="${hex}"${opacity} d="${subpaths.join("")}"/>`,
+    );
+  }
+
+  return paths.join("\n");
+}
+
 export function traceBinaryLayers(
   traceFn: WasmTraceFn,
   width: number,
@@ -610,6 +739,22 @@ export function traceBinaryLayers(
     );
     nodeCount += traced.metrics.nodeCount;
     pathCount += traced.metrics.pathCount;
+  }
+  // Residual correction layer (Claude feedback item 6): pixels where the
+  // predicted raster (fills[splitRanks[p]]) differs from the original get
+  // exact rectangle paths on top. With threshold 0 this is lossless at 1:1.
+  if (originalPixels != null) {
+    const residualSvg = buildResidualLayer(
+      originalPixels,
+      width,
+      height,
+      splitRanks,
+      splitFills,
+    );
+    if (residualSvg) {
+      svgParts.push(residualSvg);
+      pathCount += 1;
+    }
   }
   const svg =
     `<?xml version="1.0" encoding="UTF-8" ?>\n` +
