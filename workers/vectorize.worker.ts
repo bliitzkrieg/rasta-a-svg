@@ -145,26 +145,27 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
 
       // Decode off the main thread: fast-png, JS box downscale, preprocess.
       // An 8000x8000 PNG allocates hundreds of MB here; on the main thread
-      // that froze the tab for seconds.
+      // that froze the tab for seconds. This is now the longest phase, so it
+      // gets a larger share of the progress bar.
       const decoded = await decodeBufferToImageData(payload.buffer);
 
       postMessageTyped({
         type: "progress",
-        payload: { id: payload.id, phase: "Loading VTracer", progress: 8 },
+        payload: { id: payload.id, phase: "Loading VTracer", progress: 15 },
       });
 
       const vtracer = await loadVTracer();
 
       postMessageTyped({
         type: "progress",
-        payload: { id: payload.id, phase: "Preparing trace", progress: 18 },
+        payload: { id: payload.id, phase: "Preparing trace", progress: 25 },
       });
 
       const options = toVTracerOptions(payload.settings);
 
       postMessageTyped({
         type: "progress",
-        payload: { id: payload.id, phase: "Tracing image", progress: 35 },
+        payload: { id: payload.id, phase: "Tracing image", progress: 40 },
       });
 
       const pixels = new Uint8Array(
@@ -286,6 +287,11 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
       const metrics: ConversionMetrics = {
         ...traced.metrics,
         elapsedMs: Math.round(performance.now() - startedAt),
+        // B/W mode is never pixel-exact by design (binary thresholding loses
+        // color info). Override whatever the tracer reported.
+        ...(options.clusteringMode === "binary"
+          ? { pixelExact: "bw" as const }
+          : {}),
       };
       const baseResult: Omit<ConversionResult, "svg" | "eps" | "dxf"> = {
         width: traced.width,

@@ -206,6 +206,28 @@
   background: #7f1d1d;
   color: #fef2f2;
   font-size: 14px;
-  cursor: pointer;
   box-shadow: 0 4px 12px rgb(0 0 0 / 0.25);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.exportErrorDismiss {
+  background: transparent;
+  border: 1px solid #fef2f2;
+  color: #fef2f2;
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.exportErrorDismiss:hover {
+  background: rgb(255 255 255 / 0.1);
+}
+
+.exportErrorDismiss:focus-visible {
+  outline: 2px solid #fef2f2;
+  outline-offset: 2px;
 }

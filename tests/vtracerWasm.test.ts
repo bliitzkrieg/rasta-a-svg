@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_SETTINGS } from "@/lib/vectorize/defaultSettings";
 import { toVTracerOptions } from "@/lib/vectorize/vtracerOptions";
 import {
@@ -8,6 +8,10 @@ import {
   trace_rgba_to_json,
   trace_rgba_to_json_with_originals,
 } from "@/public/vendor/vtracer/vtracer_wasm.js";
+
+// Cold-start flake: the first WASM load can exceed vitest's default 5s
+// timeout on a cold run (e.g. CI after npm ci). Give this file 20s.
+vi.setConfig({ testTimeout: 20_000 });
 
 const wasmBytes = (() => {
   const raw = readFileSync(

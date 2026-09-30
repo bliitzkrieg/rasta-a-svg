@@ -6,6 +6,7 @@ export default [
     ignores: [
       ".next/",
       ".vercel/",
+      ".browser-test/",
       "node_modules/",
       "public/vendor/",
       "scripts/",

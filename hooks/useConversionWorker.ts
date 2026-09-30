@@ -38,6 +38,10 @@ export function useConversionWorker(
   const exportResolvers = useRef(
     new Map<string, { resolve: (content: string) => void; reject: (err: Error) => void }>(),
   );
+  // Pending export promises by key, so a double-click reuses the in-flight
+  // export instead of overwriting its resolver (which would leave the first
+  // promise waiting out the 5-minute timeout).
+  const pendingExports = useRef(new Map<string, Promise<string>>());
   // The worker message handler is registered once, so it reads settings
   // through a ref to avoid capturing stale values.
   const settingsRef = useRef(state.settings);
@@ -183,29 +187,40 @@ export function useConversionWorker(
     format: "eps" | "dxf",
     result: ConversionResult,
   ): Promise<string> => {
-    return new Promise((resolve, reject) => {
+    const key = `${id}:${format}`;
+    // Reuse the in-flight export if the user double-clicks: overwriting the
+    // resolver would orphan the first promise until the 5-minute timeout.
+    const pending = pendingExports.current.get(key);
+    if (pending) {
+      return pending;
+    }
+    const promise = new Promise<string>((resolve, reject) => {
       const worker = workerRef.current;
       if (!worker) {
         reject(new Error("Worker not ready"));
         return;
       }
-      const key = `${id}:${format}`;
       // Exports share the worker with conversions, so an export can queue
       // behind a long trace. Give it a generous timeout and always clear it
       // when the export settles.
       const timer = setTimeout(() => {
         if (exportResolvers.current.has(key)) {
           exportResolvers.current.delete(key);
+          pendingExports.current.delete(key);
           reject(new Error("Export timed out"));
         }
       }, 300000);
+      const cleanup = () => {
+        clearTimeout(timer);
+        pendingExports.current.delete(key);
+      };
       exportResolvers.current.set(key, {
         resolve: (content: string) => {
-          clearTimeout(timer);
+          cleanup();
           resolve(content);
         },
         reject: (err: Error) => {
-          clearTimeout(timer);
+          cleanup();
           reject(err);
         },
       });
@@ -218,6 +233,8 @@ export function useConversionWorker(
         payload: { id, format, result: resultWithoutSvg },
       });
     });
+    pendingExports.current.set(key, promise);
+    return promise;
   };
 
   return { requestExport };

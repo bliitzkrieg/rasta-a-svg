@@ -27,7 +27,7 @@ export interface BinaryTraceOutput {
   height: number;
   layers: VectorLayer[];
   svg: string;
-  metrics: { nodeCount: number; pathCount: number; pixelPerfect: boolean };
+  metrics: { nodeCount: number; pathCount: number; pixelExact: "exact" | "capped" | "simplified" };
 }
 
 export type WasmTraceFn = (
@@ -316,7 +316,7 @@ export function recolorPaletteFills(
  * The residual is estimated from its run count before any SVG string is
  * built (~20 bytes per run): if the estimate exceeds maxBytes (0 = no cap),
  * the residual is skipped without allocating the huge string, and
- * skippedByCap is true so callers can report pixelPerfect: false.
+ * skippedByCap is true so callers can report pixelExact: "capped".
  */
 export function buildResidualLayer(
   originalPixels: Uint8ClampedArray,
@@ -505,23 +505,41 @@ export function traceBinaryLayers(
   // exact rectangle paths on top. With threshold 0 this is lossless at 1:1.
   // Capped like the Rust color-path residual (usually moot: the smaller SVG
   // wins the tier comparison, but kept for symmetry).
-  let pixelPerfect = true;
+  //
+  // The residual assumes exact pixel-edge geometry. With Polygon curve
+  // fitting the paths are simplified, so the residual would patch the wrong
+  // pixels: skip it entirely (it only adds bytes).
+  let pixelExact: "exact" | "capped" | "simplified" = "exact";
   if (originalPixels != null) {
-    const parsed = JSON.parse(optionsJson) as { residualMaxBytes?: number };
-    const residual = buildResidualLayer(
-      originalPixels,
-      width,
-      height,
-      ranks,
-      fills,
-      parsed.residualMaxBytes ?? DEFAULT_RESIDUAL_MAX_BYTES,
-    );
-    if (residual.svg) {
-      // Wrap in a deletable group for cutting workflows (Claude feedback)
-      svgParts.push(`<g id="pixel-corrections">${residual.svg}</g>`);
-      pathCount += 1;
-    } else if (residual.skippedByCap) {
-      pixelPerfect = false;
+    const parsed = JSON.parse(optionsJson) as {
+      residualMaxBytes?: number;
+      mode?: string;
+      exactFlatPolygons?: boolean;
+      flatClusterMaxDelta?: number;
+    };
+    const geometryExact =
+      parsed.mode === "none" ||
+      (parsed.mode === "spline" &&
+        parsed.exactFlatPolygons === true &&
+        (parsed.flatClusterMaxDelta ?? 0) >= 255);
+    if (!geometryExact) {
+      pixelExact = "simplified";
+    } else {
+      const residual = buildResidualLayer(
+        originalPixels,
+        width,
+        height,
+        ranks,
+        fills,
+        parsed.residualMaxBytes ?? DEFAULT_RESIDUAL_MAX_BYTES,
+      );
+      if (residual.svg) {
+        // Wrap in a deletable group for cutting workflows (Claude feedback)
+        svgParts.push(`<g id="pixel-corrections">${residual.svg}</g>`);
+        pathCount += 1;
+      } else if (residual.skippedByCap) {
+        pixelExact = "capped";
+      }
     }
   }
   // Use source dimensions for display size (if provided), but keep viewBox
@@ -535,5 +553,5 @@ export function traceBinaryLayers(
     `<svg width="${displayWidth}" height="${displayHeight}" viewBox="0 0 ${width} ${height}" version="1.1" xmlns="http://www.w3.org/2000/svg">\n` +
     `${svgParts.join("\n")}\n` +
     `</svg>\n`;
-  return { width, height, layers, svg, metrics: { nodeCount, pathCount, pixelPerfect } };
+  return { width, height, layers, svg, metrics: { nodeCount, pathCount, pixelExact } };
 }

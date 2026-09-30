@@ -58,10 +58,17 @@ export interface ConversionMetrics {
   nodeCount: number;
   pathCount: number;
   elapsedMs: number;
-  /** False when the pixel-correction (residual) layer was skipped by the
-   * size cap, so the SVG is not pixel-exact. The UI and FAQ use this to
-   * stay honest instead of claiming pixel-perfection. */
-  pixelPerfect: boolean;
+  /** Why the SVG is or isn't pixel-exact vs the source.
+   * - "exact": pixel-correction layer present (or unnecessary), SVG is exact.
+   * - "capped": correction skipped by residualMaxBytes size cap.
+   * - "bw": B/W mode, never pixel-exact by design.
+   * - "simplified": geometry simplified (e.g. Polygon curve fitting), so the
+   *   correction layer cannot be correct.
+   * Undefined for results saved before v1.0.44 (treated as unknown). */
+  pixelExact?: "exact" | "capped" | "bw" | "simplified";
+  /** @deprecated Use pixelExact instead. Kept for backwards compat with
+   * results saved before v1.0.44. */
+  pixelPerfect?: boolean;
 }
 
 export interface ConversionResult {

@@ -85,8 +85,8 @@ interface BenchResult {
   exactBlack: number;
   maxErrWhite: number;
   maxErrBlack: number;
-  /** False when the residual was skipped by the size cap */
-  pixelPerfect: boolean;
+  /** Why the result is or isn't pixel-exact */
+  pixelExact: string;
   svgBytes: number;
   timeMs: number;
 }
@@ -124,7 +124,7 @@ async function main() {
     for (const path of routing.paths) {
       const start = Date.now();
       let svg: string;
-      let pixelPerfect = true;
+      let pixelExact = "exact";
       
       try {
         if (path === "binary") {
@@ -138,7 +138,7 @@ async function main() {
             scaled.w, scaled.h
           );
           svg = out.svg!;
-          pixelPerfect = out.metrics.pixelPerfect;
+          pixelExact = out.metrics.pixelExact;
         } else {
           const out = JSON.parse(trace_rgba_to_json_with_originals(
             scaled.w, scaled.h,
@@ -147,7 +147,7 @@ async function main() {
             OPTIONS_JSON
           ));
           svg = out.svg as string;
-          pixelPerfect = out.metrics.pixelPerfect === true;
+          pixelExact = out.metrics.pixelExact ?? "exact";
         }
       } catch (e) {
         console.error(`  ${path}: TRACE FAILED - ${e}`);
@@ -176,24 +176,25 @@ async function main() {
         exactBlack: blackCmp.exactPct,
         maxErrWhite: whiteCmp.maxErr,
         maxErrBlack: blackCmp.maxErr,
-        pixelPerfect,
+        pixelExact,
         svgBytes: svg.length,
         timeMs,
       };
       results.push(result);
       pathSvgs.set(path, svg);
       
-      // A capped residual is honest non-exactness by design (pixelPerfect=false),
+      // A non-exact result is honest by design (capped, simplified, bw),
       // not a regression: the old code dropped the same residual, it just
-      // didn't say so. Only gate on 100% when the residual was emitted.
-      const status = !pixelPerfect
-        ? "CAPPED"
+      // didn't say so. Only gate on 100% when exact was claimed.
+      const isExact = pixelExact === "exact";
+      const status = !isExact
+        ? pixelExact.toUpperCase()
         : (whiteCmp.exactPct === 100 && blackCmp.exactPct === 100) ? "PASS" : "FAIL";
       if (status === "FAIL") failures++;
       
       console.log(`  ${path}: [${status}] white=${whiteCmp.exactPct.toFixed(3)}% black=${blackCmp.exactPct.toFixed(3)}% ` +
         `max=${Math.max(whiteCmp.maxErr, blackCmp.maxErr)} bytes=${svg.length} time=${timeMs}ms` +
-        (pixelPerfect ? "" : " pixelPerfect=false"));
+        (isExact ? "" : ` pixelExact=${pixelExact}`));
     }
     
     // Determine which path the app ships (for tier images: smaller SVG)
@@ -238,8 +239,8 @@ async function main() {
     console.error(`\n${failures} failures`);
     process.exit(1);
   }
-  const capped = results.filter(r => !r.pixelPerfect).length;
-  console.log(`\nAll benchmarks passed${capped > 0 ? ` (${capped} capped by residual limit, pixelPerfect=false)` : " at 100% exact"}`);
+  const nonExact = results.filter(r => r.pixelExact !== "exact").length;
+  console.log(`\nAll benchmarks passed${nonExact > 0 ? ` (${nonExact} not exact)` : " at 100% exact"}`);
 }
 
 main().catch(e => {

@@ -271,15 +271,26 @@ export default function ConverterApp() {
     }));
   };
 
+  // Auto-dismiss export error toast after 8 seconds.
+  useEffect(() => {
+    if (!exportError) return;
+    const timer = setTimeout(() => setExportError(null), 8000);
+    return () => clearTimeout(timer);
+  }, [exportError]);
+
   return (
     <>
       {exportError && (
-        <div
-          role="alert"
-          className={styles.exportErrorToast}
-          onClick={() => setExportError(null)}
-        >
-          Export failed: {exportError} (click to dismiss)
+        <div role="alert" className={styles.exportErrorToast}>
+          <span>Export failed: {exportError}</span>
+          <button
+            type="button"
+            onClick={() => setExportError(null)}
+            aria-label="Dismiss export error"
+            className={styles.exportErrorDismiss}
+          >
+            Dismiss
+          </button>
         </div>
       )}
       <main

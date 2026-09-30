@@ -139,10 +139,12 @@ struct TraceLayer {
 struct TraceMetrics {
     node_count: usize,
     path_count: usize,
-    /// True when the shipped SVG is pixel-exact vs the source: the residual
-    /// correction layer is present, or was unnecessary. False when the
-    /// residual was skipped by residualMaxBytes.
-    pixel_perfect: bool,
+    /// Why the SVG is or isn't pixel-exact vs the source.
+    /// "exact": correction layer present (or unnecessary).
+    /// "capped": skipped by residualMaxBytes.
+    /// "simplified": geometry simplified (e.g. Polygon mode).
+    /// B/W mode is handled by the TypeScript layer (sets "bw").
+    pixel_exact: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -681,8 +683,22 @@ fn build_color_output(
     // For each pixel, compare the painted fill with the original.
     // Emit exact-color rectangles for mismatches.
     // Wrapped in <g id="pixel-corrections"> so cutting users can delete it easily.
-    let mut residual_skipped = false;
+    //
+    // The residual assumes traced paths follow exact pixel edges, which only
+    // holds when the geometry is exact: mode "none" (no simplification), or
+    // spline mode with exactFlatPolygons and a max delta that keeps flat
+    // clusters on the pixel grid. With Polygon curve fitting the paths are
+    // simplified, so the residual would patch the wrong pixels: skip it.
+    let geometry_exact =
+        options.mode == "none" || (options.mode == "spline" && options.exactFlatPolygons && options.flatClusterMaxDelta >= 255);
+    // Track why the result is or isn't pixel-exact. Starts as "exact" (will
+    // be downgraded if the residual is skipped).
+    let mut pixel_exact = String::from("exact");
     if let Some(orig) = originals {
+        if !geometry_exact {
+            // Simplified geometry: the residual cannot be correct, skip it.
+            pixel_exact = String::from("simplified");
+        } else {
         // Build label map: pixel -> paint order index of claiming cluster
         let mut labels = vec![u32::MAX; total_pixels];
         for (order, vis) in visible_sets.iter().enumerate() {
@@ -777,7 +793,7 @@ fn build_color_output(
         if !colors.is_empty() {
             let estimate = total_runs * 20 + colors.len() * 48 + 32;
             if options.residualMaxBytes != 0 && estimate > options.residualMaxBytes {
-                residual_skipped = true;
+                pixel_exact = String::from("capped");
             } else {
                 let mut residual_entries: Vec<String> = Vec::with_capacity(colors.len());
                 for color in &colors {
@@ -812,6 +828,7 @@ fn build_color_output(
                 ));
             }
         }
+        } // close else (geometry_exact)
     }
 
     TraceOutput {
@@ -822,9 +839,7 @@ fn build_color_output(
         metrics: TraceMetrics {
             node_count,
             path_count,
-            // Pixel-perfect only when the residual is present or unnecessary.
-            // Without originals there is no recolor or residual, so no claim.
-            pixel_perfect: originals.is_some() && !residual_skipped,
+            pixel_exact,
         },
     }
 }
@@ -894,8 +909,8 @@ fn build_binary_output(
             node_count,
             path_count,
             // Intermediate binary output: the TS binary path adds its own
-            // residual and reports pixelPerfect itself.
-            pixel_perfect: false,
+            // residual and reports pixelExact itself.
+            pixel_exact: String::from("exact"),
         },
     }
 }

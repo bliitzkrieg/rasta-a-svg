@@ -28,7 +28,7 @@ const baseResult = {
     nodeCount: 4,
     pathCount: 1,
     elapsedMs: 1,
-    pixelPerfect: true
+    pixelExact: "exact" as const
   }
 };
 

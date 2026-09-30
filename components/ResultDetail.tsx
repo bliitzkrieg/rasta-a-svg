@@ -17,11 +17,23 @@ export function ResultDetail({ result, onExport }: ResultDetailProps) {
       </div>
       {result ? (
         <div className="result-stack">
-          {!result.metrics.pixelPerfect && (
+          {result.metrics.pixelExact === "capped" && (
             <p className="muted" role="note">
               Note: this is a large, detailed image, so the pixel-correction
               layer was skipped to keep the file size reasonable. The SVG is
               very close but not pixel-exact.
+            </p>
+          )}
+          {result.metrics.pixelExact === "simplified" && (
+            <p className="muted" role="note">
+              Note: Polygon curve fitting simplifies the paths, so the SVG is
+              not pixel-exact. Use Spline for the most accurate result.
+            </p>
+          )}
+          {result.metrics.pixelExact === "bw" && (
+            <p className="muted" role="note">
+              Note: B/W mode traces a black-and-white silhouette, so the SVG
+              is not pixel-exact by design.
             </p>
           )}
           <div className="stats">
