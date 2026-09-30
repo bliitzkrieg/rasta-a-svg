@@ -1,3 +1,5 @@
+/* @ts-self-types="./vtracer_wasm.d.ts" */
+
 export function start() {
     wasm.start();
 }

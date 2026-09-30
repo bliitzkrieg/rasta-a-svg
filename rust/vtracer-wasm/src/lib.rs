@@ -382,8 +382,9 @@ fn trace_binary_image(
     pixels: &[u8],
     options: &TraceOptions,
 ) -> TraceOutput {
-    let mut image = build_color_image(width, height, pixels);
-    flatten_alpha(&mut image);
+    let image = build_color_image(width, height, pixels);
+    // Note: flatten_alpha removed (was redundant - the closure below already
+    // thresholds at 128). The binary mask from TypeScript always has alpha=255.
     let binary_image = image.to_binary_image(|pixel| pixel.a >= 128 && pixel.r < 128);
     let clusters = binary_image.to_clusters(false);
     build_binary_output(width, height, &clusters, options)
@@ -752,22 +753,15 @@ fn should_key_image(image: &ColorImage) -> bool {
         return false;
     }
 
-    let threshold = ((image.width * 2) as f32 * KEYING_THRESHOLD) as usize;
+    // Check all pixels for transparency (was only sampling 5 rows, which
+    // could miss transparent regions - Claude feedback item 3.4).
+    // Use keying if any meaningful amount of transparency exists.
+    let threshold = ((image.width * image.height) as f32 * KEYING_THRESHOLD) as usize;
     let mut transparent = 0usize;
-    let y_positions = [
-        0,
-        image.height / 4,
-        image.height / 2,
-        3 * image.height / 4,
-        image.height - 1,
-    ];
 
-    for y in y_positions {
-        for x in 0..image.width {
-            let offset = (y * image.width + x) * 4 + 3;
-            if image.pixels[offset] == 0 {
-                transparent += 1;
-            }
+    for offset in (3..image.pixels.len()).step_by(4) {
+        if image.pixels[offset] == 0 {
+            transparent += 1;
             if transparent >= threshold {
                 return true;
             }
