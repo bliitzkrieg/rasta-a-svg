@@ -1,12 +1,19 @@
 /// <reference lib="webworker" />
-// v1.0.33: force rebuild for edge-fragment snap fix
 
-// Strip pt units from SVG dimensions (WASM emits pt, we want px).
-// Harmless on input already in px; can be removed after WASM is fixed.
-function stripPtUnits(svg: string): string {
+// Apply source display size to SVG header (for color path which doesn't
+// go through traceBinaryLayers). Replaces width/height with source dimensions
+// while preserving the viewBox at traced dimensions.
+function applySourceDisplaySize(
+  svg: string,
+  sourceWidth?: number,
+  sourceHeight?: number,
+): string {
+  if (sourceWidth == null || sourceHeight == null) {
+    return svg;
+  }
   return svg.replace(
-    /(<svg[^>]*?)width="(\d+)pt" height="(\d+)pt"/,
-    '$1width="$2" height="$3"',
+    /(<svg[^>]*?)width="(\d+)" height="(\d+)"/,
+    `$1width="${sourceWidth}" height="${sourceHeight}"`,
   );
 }
 
@@ -132,10 +139,12 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
       );
       const optionsJson = JSON.stringify(options);
       let traced: VTracerTraceOutput;
+      let isBinaryPath = false;
       if (payload.paletteTier != null && options.clusteringMode === "color") {
         // Flat artwork: trace each palette color as a nested binary mask
         // and stack the masks background-first. Exact per-color walks beat
         // the color-mode tracer's fragmented clusters on these images.
+        isBinaryPath = true;
         const merged = traceBinaryLayers(
           (w, h, px, opts) => vtracer.trace_rgba_to_json(w, h, px, opts),
           payload.width,
@@ -213,7 +222,13 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
           id: payload.id,
           result: {
             ...baseResult,
-            svg: stripPtUnits(traced.svg),
+            svg: isBinaryPath
+              ? traced.svg
+              : applySourceDisplaySize(
+                  traced.svg,
+                  payload.sourceWidth,
+                  payload.sourceHeight,
+                ),
             eps,
             dxf,
           },

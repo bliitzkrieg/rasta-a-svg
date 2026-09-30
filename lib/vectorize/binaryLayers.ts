@@ -107,9 +107,10 @@ export function paletteRanksOnOriginals(
   const n = Math.min(originalPixels.length, width * height * 4);
   for (let p = 0; p < width * height && p * 4 + 3 < n; p += 1) {
     const o = p * 4;
-    // Fully transparent pixels get rank -1 so no layer paints them.
-    // They show as transparent instead of a painted white rectangle.
-    if (originalPixels[o + 3] === 0) {
+    // Non-opaque pixels get rank -1 so no layer paints them.
+    // They are handled by the residual layer with exact RGB + fill-opacity,
+    // blending over the page exactly as the PNG does.
+    if (originalPixels[o + 3] !== 255) {
       ranks[p] = -1;
       continue;
     }
@@ -200,7 +201,7 @@ const RECOLOR_TOLERANCE = 24;
  * How many frequent original colors per layer are tried as fill
  * candidates (plus the current palette color, which is always tried).
  */
-const RECOLOR_TOP_CANDIDATES = 16;
+// (removed RECOLOR_TOP_CANDIDATES - was only used by deleted unreachable code)
 /**
  * Flat-region guard only applies to layers with at least this many
  * pixels, so degenerate speck layers keep the conservative tie-break.
@@ -314,38 +315,6 @@ export function recolorPaletteFills(
     // tiny-layer snap below, which needs to distinguish large vs tiny layers.
     fills.push(keyToRgb(modeKey));
     continue;
-    const top = sorted
-      .slice(0, RECOLOR_TOP_CANDIDATES)
-      .map(([key]) => keyToRgb(key));
-    const current = palette[r];
-    const currentKey = rgbKey(current[0], current[1], current[2]);
-    const candidates: Rgb[] = [current];
-    for (const c of top) {
-      if (rgbKey(c[0], c[1], c[2]) !== currentKey) {
-        candidates.push(c);
-      }
-    }
-    let best = current;
-    let bestCovered = -1;
-    for (const [cr, cg, cb] of candidates) {
-      let covered = 0;
-      for (const p of members) {
-        const t = p * 3;
-        const worst = Math.max(
-          Math.abs(orig[t] - cr),
-          Math.abs(orig[t + 1] - cg),
-          Math.abs(orig[t + 2] - cb),
-        );
-        if (worst <= RECOLOR_TOLERANCE) {
-          covered += 1;
-        }
-      }
-      if (covered > bestCovered) {
-        bestCovered = covered;
-        best = [cr, cg, cb];
-      }
-    }
-    fills.push(best);
   }
   // Edge-fragment snap: tiny layers (< RECOLOR_FLAT_MIN_PIXELS pixels) are
   // usually anti-aliased fringe splinters. Their coverage vote can elect a
@@ -596,24 +565,9 @@ export function buildResidualLayer(
     const ob = originalPixels[o + 2];
     const oa = originalPixels[o + 3];
 
-    // Compare RGBA. For semi-transparent originals, we compare the
-    // composited-over-white RGB (matching the metric) and alpha separately.
-    let match: boolean;
-    if (oa === 255) {
-      match = or === fr && og === fg && ob === fb;
-    } else if (oa === 0) {
-      // Transparent original, but pixel was painted: residual only if
-      // the fill is not white (white on transparent looks like background).
-      // Actually, any painted pixel over transparent is wrong.
-      match = false;
-    } else {
-      const af = oa / 255;
-      const inv = 1 - af;
-      const cr = Math.round(or * af + 255 * inv);
-      const cg = Math.round(og * af + 255 * inv);
-      const cb = Math.round(ob * af + 255 * inv);
-      match = cr === fr && cg === fg && cb === fb;
-    }
+    // Compare RGB. Only opaque pixels (oa === 255) can be painted now;
+    // non-opaque pixels get rank -1 and are handled by the r < 0 branch.
+    const match = or === fr && og === fg && ob === fb;
 
     if (!match) {
       const key = (or << 24) | (og << 16) | (ob << 8) | oa;
@@ -629,6 +583,8 @@ export function buildResidualLayer(
   }
 
   // For each color, scan row by row and emit rectangle subpaths for runs
+  // Note: pixels are already in row-major order (added sequentially by p),
+  // so no sort is needed.
   const paths: string[] = [];
   for (const [key, pixels] of byColor) {
     const r = (key >> 24) & 0xff;
@@ -636,10 +592,7 @@ export function buildResidualLayer(
     const b = (key >> 8) & 0xff;
     const a = key & 0xff;
 
-    // Sort by y then x for row scanning
-    pixels.sort((p1, p2) => p1.y - p2.y || p1.x - p2.x);
-
-    // Group into runs per row
+    // Group into runs per row (pixels already sorted by y then x)
     const subpaths: string[] = [];
     let i = 0;
     while (i < pixels.length) {
@@ -688,6 +641,10 @@ export function traceBinaryLayers(
   const binaryOptionsJson = JSON.stringify({
     ...(JSON.parse(optionsJson) as Record<string, unknown>),
     clusteringMode: "binary",
+    // Force filterSpeckle to 1: the residual layer is the accuracy mechanism
+    // now. Speckle filtering would drop small clusters that the residual
+    // would then have to re-add, breaking the exactness guarantee.
+    filterSpeckle: 1,
   });
   const ranks =
     originalPixels != null

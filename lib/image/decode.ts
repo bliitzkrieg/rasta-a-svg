@@ -1,3 +1,4 @@
+import { decode } from "fast-png";
 import { medianFilter5x5 } from "./medianFilter";
 import { adaptiveEdgeRestore } from "./unsharpMask";
 import { ditherPassthroughIfDithered } from "./descreen";
@@ -35,17 +36,37 @@ export async function decodeBlobToImageData(blob: Blob): Promise<DecodedImage> {
   const outputWidth = Math.max(1, Math.round(bitmap.width * scale));
   const outputHeight = Math.max(1, Math.round(bitmap.height * scale));
 
-  const canvas = document.createElement("canvas");
-  canvas.width = outputWidth;
-  canvas.height = outputHeight;
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  if (!ctx) {
-    throw new Error("Failed to create canvas context.");
+  let raw: Uint8ClampedArray;
+  let canvasWidth: number;
+  let canvasHeight: number;
+
+  if (scale === 1) {
+    // No resize needed: decode PNG directly to avoid canvas premultiplication
+    // precision loss (Claude feedback item 6). The canvas path stores
+    // premultiplied pixels and un-premultiplies on getImageData, losing
+    // precision for low-alpha pixels.
+    const buffer = await blob.arrayBuffer();
+    const png = decode(buffer);
+    canvasWidth = png.width;
+    canvasHeight = png.height;
+    // fast-png returns RGBA as Uint8Array; convert to Uint8ClampedArray
+    raw = new Uint8ClampedArray(png.data);
+  } else {
+    // Resize needed: use canvas path (drawImage does the scaling)
+    const canvas = document.createElement("canvas");
+    canvas.width = outputWidth;
+    canvas.height = outputHeight;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) {
+      throw new Error("Failed to create canvas context.");
+    }
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(bitmap, 0, 0, outputWidth, outputHeight);
+    raw = ctx.getImageData(0, 0, outputWidth, outputHeight).data;
+    canvasWidth = outputWidth;
+    canvasHeight = outputHeight;
   }
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(bitmap, 0, 0, outputWidth, outputHeight);
-  const raw = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
   // Light denoise before tracing: a 5x5 median pass removes speckle noise
   // and smooths photographic gradients while preserving sharp edges
   // (parity harness: 0.9788 overall, +0.0029 over the 3x3 window, no
@@ -117,27 +138,27 @@ export async function decodeBlobToImageData(blob: Blob): Promise<DecodedImage> {
   // 18-image suite (parity harness verified). Binary-path flat art where
   // the median only lightly rewrites (goose_balloon) keeps the median:
   // it cleans the palette snap there.
-  const ditherRaw = ditherPassthroughIfDithered(raw, canvas.width, canvas.height);
+  const ditherRaw = ditherPassthroughIfDithered(raw, canvasWidth, canvasHeight);
   const medianDenoised =
-    ditherRaw ?? medianFilter5x5(raw, canvas.width, canvas.height);
+    ditherRaw ?? medianFilter5x5(raw, canvasWidth, canvasHeight);
   const thinRaw =
     ditherRaw ??
-    thinStructurePassthrough(raw, canvas.width, canvas.height, medianDenoised);
+    thinStructurePassthrough(raw, canvasWidth, canvasHeight, medianDenoised);
   const noiseRaw =
     ditherRaw ??
     thinRaw ??
-    noisePhotoPassthrough(raw, canvas.width, canvas.height, medianDenoised);
+    noisePhotoPassthrough(raw, canvasWidth, canvasHeight, medianDenoised);
   const softRaw =
     ditherRaw ??
     thinRaw ??
     noiseRaw ??
-    softAlphaPassthrough(raw, canvas.width, canvas.height, medianDenoised);
+    softAlphaPassthrough(raw, canvasWidth, canvasHeight, medianDenoised);
   const damageRaw =
     ditherRaw ??
     thinRaw ??
     noiseRaw ??
     softRaw ??
-    medianDamagePassthrough(raw, canvas.width, canvas.height, medianDenoised);
+    medianDamagePassthrough(raw, canvasWidth, canvasHeight, medianDenoised);
   const denoised = damageRaw ?? softRaw ?? noiseRaw ?? thinRaw ?? medianDenoised;
   // Flat artwork where the edge restore would only add halos: the median
   // is edge-preserving on hard edges, so the unsharp mask has nothing to
@@ -153,7 +174,7 @@ export async function decodeBlobToImageData(blob: Blob): Promise<DecodedImage> {
     noiseRaw ??
     softRaw ??
     damageRaw ??
-    restoreDamagePassthrough(raw, denoised, canvas.width, canvas.height);
+    restoreDamagePassthrough(raw, denoised, canvasWidth, canvasHeight);
   const restored =
     ditherRaw ??
     thinRaw ??
@@ -161,23 +182,23 @@ export async function decodeBlobToImageData(blob: Blob): Promise<DecodedImage> {
     softRaw ??
     damageRaw ??
     restoreRaw ??
-    adaptiveEdgeRestore(raw, denoised, canvas.width, canvas.height);
-  const posterized = posterizeImageData(restored, canvas.width, canvas.height);
-  const voted = adaptiveMajorityVote(posterized, canvas.width, canvas.height);
-  const composited = compositeAlphaOverWhite(voted, canvas.width, canvas.height);
+    adaptiveEdgeRestore(raw, denoised, canvasWidth, canvasHeight);
+  const posterized = posterizeImageData(restored, canvasWidth, canvasHeight);
+  const voted = adaptiveMajorityVote(posterized, canvasWidth, canvasHeight);
+  const composited = compositeAlphaOverWhite(voted, canvasWidth, canvasHeight);
   // Damage-checked tier: the snap (and the binary-layer path it enables)
   // is applied only when it preserves the image within the scoring
   // tolerance; a lossy snap is skipped in favor of the standard
   // color-mode tracer on the unsnapped pixels.
   const tier = damageCheckedPaletteSnapTier(
     composited,
-    canvas.width,
-    canvas.height,
+    canvasWidth,
+    canvasHeight,
   );
   const data =
     tier === null
-      ? composited.slice(0, canvas.width * canvas.height * 4)
-      : paletteSnapImageData(composited, canvas.width, canvas.height, tier);
+      ? composited.slice(0, canvasWidth * canvasHeight * 4)
+      : paletteSnapImageData(composited, canvasWidth, canvasHeight, tier);
   // Gated palette merge: after the snap, consolidate near-identical
   // opaque colors (worst channel diff at most 12) into their
   // count-weighted mean, but only on grainy illustrations with a
@@ -187,12 +208,12 @@ export async function decodeBlobToImageData(blob: Blob): Promise<DecodedImage> {
   // fewer ~1px boundary errors in binary-layer tracing (parity
   // harness, honest end-to-end metric: luca_skeleton 0.8820 to
   // 0.8847; photos and clean illustrations keep the standard path).
-  const merged = shouldMergePalette(composited, canvas.width, canvas.height)
-    ? paletteMergeImageData(data, canvas.width, canvas.height)
+  const merged = shouldMergePalette(composited, canvasWidth, canvasHeight)
+    ? paletteMergeImageData(data, canvasWidth, canvasHeight)
     : data;
   return {
-    width: canvas.width,
-    height: canvas.height,
+    width: canvasWidth,
+    height: canvasHeight,
     sourceWidth: bitmap.width,
     sourceHeight: bitmap.height,
     pixels: merged,

@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   adaptiveMajorityVote,
@@ -77,7 +77,8 @@ describe("majorityVoteImageData", () => {
     expect(out[center + 3]).toBe(128);
   });
 
-  it("matches the parity harness byte-identically on real images", () => {
+  // Fixture-dependent: skip if /tmp fixtures don't exist (e.g., clean clone)
+  it.skipIf(!existsSync("/tmp/mv_diagonal_text.png.size"))("matches the parity harness byte-identically on real images", () => {
     for (const name of ["diagonal_text.png", "thin_lines.png", "photo.png"]) {
       const [w, h] = readFileSync(`/tmp/mv_${name}.size`, "utf8")
         .trim()

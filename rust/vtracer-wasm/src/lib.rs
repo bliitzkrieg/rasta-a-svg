@@ -12,8 +12,6 @@ use visioncortex::{
     PointF64,
 };
 
-const KEYING_THRESHOLD: f32 = 0.2;
-
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[allow(non_snake_case)]
@@ -642,6 +640,115 @@ fn build_color_output(
         }
     }
 
+    // Build residual layer for color path (Claude feedback item 2).
+    // For each pixel, compare the painted fill with the original.
+    // Emit exact-color rectangles for mismatches.
+    if let Some(orig) = originals {
+        // Build label map: pixel -> paint order index of claiming cluster
+        let mut labels = vec![u32::MAX; total_pixels];
+        for (order, vis) in visible_sets.iter().enumerate() {
+            for &idx in vis {
+                let i = idx as usize;
+                if i < total_pixels {
+                    labels[i] = order as u32;
+                }
+            }
+        }
+        // Get fill colors in paint order
+        let mut fill_rgbs: Vec<(u8, u8, u8)> = Vec::with_capacity(paint_order.len());
+        for (order, cluster) in paint_order.iter().enumerate() {
+            let fill_hex = match originals {
+                Some(o) => recolor_cluster_fill(cluster, &visible_sets[order], o),
+                None => cluster.residue_color().to_hex_string(),
+            };
+            // Parse hex to RGB
+            let r = u8::from_str_radix(&fill_hex[1..3], 16).unwrap_or(0);
+            let g = u8::from_str_radix(&fill_hex[3..5], 16).unwrap_or(0);
+            let b = u8::from_str_radix(&fill_hex[5..7], 16).unwrap_or(0);
+            fill_rgbs.push((r, g, b));
+        }
+        // Find mismatched pixels and group by color
+        use std::collections::HashMap;
+        let mut by_color: HashMap<u32, Vec<(u32, u32)>> = HashMap::new();
+        for y in 0..height {
+            for x in 0..width {
+                let p = (y * width + x) as usize;
+                let o = p * 4;
+                if o + 3 >= orig.len() {
+                    continue;
+                }
+                let or = orig[o];
+                let og = orig[o + 1];
+                let ob = orig[o + 2];
+                let oa = orig[o + 3];
+                let label = labels[p];
+                if label == u32::MAX {
+                    // Unpainted pixel with non-transparent original: needs residual
+                    if oa != 0 {
+                        let key = ((or as u32) << 24) | ((og as u32) << 16) | ((ob as u32) << 8) | (oa as u32);
+                        by_color.entry(key).or_insert_with(Vec::new).push((x, y));
+                    }
+                    continue;
+                }
+                let (fr, fg, fb) = fill_rgbs[label as usize];
+                // Only check opaque pixels (transparent handled by unpainted case)
+                if oa == 255 && (or != fr || og != fg || ob != fb) {
+                    let key = ((or as u32) << 24) | ((og as u32) << 16) | ((ob as u32) << 8) | 255;
+                    by_color.entry(key).or_insert_with(Vec::new).push((x, y));
+                } else if oa != 255 && oa != 0 {
+                    // Semi-transparent: needs exact with fill-opacity
+                    let key = ((or as u32) << 24) | ((og as u32) << 16) | ((ob as u32) << 8) | (oa as u32);
+                    by_color.entry(key).or_insert_with(Vec::new).push((x, y));
+                }
+            }
+        }
+        // Emit residual rectangles (row runs)
+        for (key, mut pixels) in by_color {
+            if pixels.is_empty() {
+                continue;
+            }
+            let r = ((key >> 24) & 0xff) as u8;
+            let g = ((key >> 16) & 0xff) as u8;
+            let b = ((key >> 8) & 0xff) as u8;
+            let a = (key & 0xff) as u8;
+            pixels.sort_by(|a, b| a.1.cmp(&b.1).then(a.0.cmp(&b.0)));
+            let mut paths = Vec::new();
+            let mut i = 0;
+            while i < pixels.len() {
+                let (sx, sy) = pixels[i];
+                let mut ex = sx;
+                while i + 1 < pixels.len() && pixels[i + 1].1 == sy && pixels[i + 1].0 == ex + 1 {
+                    ex += 1;
+                    i += 1;
+                }
+                let w = ex - sx + 1;
+                if w == 1 {
+                    paths.push(format!("M{} {}h1v1z", sx, sy));
+                } else {
+                    paths.push(format!("M{} {}h{}v1z", sx, sy, w));
+                }
+                i += 1;
+            }
+            let fill_attr = if a == 255 {
+                format!("fill=\"#{:02x}{:02x}{:02x}\"", r, g, b)
+            } else {
+                format!(
+                    "fill=\"#{:02x}{:02x}{:02x}\" fill-opacity=\"{:.3}\"",
+                    r,
+                    g,
+                    b,
+                    a as f32 / 255.0
+                )
+            };
+            svg_entries.push(format!(
+                "<path {} d=\"{}\" />",
+                fill_attr,
+                paths.join("")
+            ));
+            path_count += 1;
+        }
+    }
+
     TraceOutput {
         width,
         height,
@@ -739,7 +846,7 @@ fn svg_entry(fill_color: &str, svg_path_data: &str, svg_offset: PointF64) -> Str
 
 fn build_svg(width: u32, height: u32, svg_entries: &[String]) -> String {
     format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>\n<!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.1//EN\" \"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd\">\n<svg width=\"{}pt\" height=\"{}pt\" viewBox=\"0 0 {} {}\" version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\">\n{}\n</svg>\n",
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>\n<!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.1//EN\" \"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd\">\n<svg width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\" version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\">\n{}\n</svg>\n",
         width,
         height,
         width,
@@ -753,18 +860,12 @@ fn should_key_image(image: &ColorImage) -> bool {
         return false;
     }
 
-    // Check all pixels for transparency (was only sampling 5 rows, which
-    // could miss transparent regions - Claude feedback item 3.4).
-    // Use keying if any meaningful amount of transparency exists.
-    let threshold = ((image.width * image.height) as f32 * KEYING_THRESHOLD) as usize;
-    let mut transparent = 0usize;
-
+    // Key whenever at least one pixel is fully transparent (Claude feedback
+    // item 4). Keying costs nothing when it isn't needed, and a stricter
+    // threshold could miss logos with small transparent areas.
     for offset in (3..image.pixels.len()).step_by(4) {
         if image.pixels[offset] == 0 {
-            transparent += 1;
-            if transparent >= threshold {
-                return true;
-            }
+            return true;
         }
     }
 

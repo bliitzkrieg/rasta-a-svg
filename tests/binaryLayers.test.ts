@@ -150,7 +150,7 @@ describe("innerSvgPaths", () => {
 describe("paletteRanksOnOriginals", () => {
   it("snaps every pixel to its nearest palette color on white-composited originals", () => {
     // (250,250,250) is nearer to white than to black; (10,10,10) is nearer
-    // to black. Fully transparent pixels get rank -1 (not painted).
+    // to black. Non-opaque pixels get rank -1 (not painted).
     const original = makePixels(3, 1, (x) =>
       x === 0
         ? [250, 250, 250, 255]
@@ -163,6 +163,19 @@ describe("paletteRanksOnOriginals", () => {
       [255, 255, 255],
     ]);
     expect([...ranks]).toEqual([1, 0, -1]);
+  });
+
+  it("assigns rank -1 to partial-alpha pixels", () => {
+    // A semi-transparent pixel (alpha=128) gets rank -1 so no layer paints it.
+    // The residual layer handles it with exact RGB + fill-opacity.
+    const original = makePixels(2, 1, (x) =>
+      x === 0 ? [255, 0, 0, 128] : [255, 0, 0, 255],
+    );
+    const ranks = paletteRanksOnOriginals(original, 2, 1, [
+      [255, 0, 0],
+      [255, 255, 255],
+    ]);
+    expect([...ranks]).toEqual([-1, 0]);
   });
 
   it("assigns a blend pixel to the palette color its true color is nearest to", () => {

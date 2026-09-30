@@ -9,6 +9,7 @@ export default [
       "node_modules/",
       "public/vendor/",
       "scripts/",
+      "tools/",
       "public/sw.js",
       "*.config.js",
       "*.config.mjs",
