@@ -68,3 +68,36 @@ describe("pixel-perfect (resvg)", () => {
     it(`color: ${name}`, () => { for (const r of check(`COL ${name}`, img, traceColor(img))) expect(r.exactPct).toBe(100); });
   }
 });
+
+describe("pixel-perfect in Polygon mode (resvg)", () => {
+  // Regression test (Claude review): the binary path uses exact pixel-edge
+  // geometry when exactFlatPolygons is on, regardless of curve-fitting mode.
+  // In Polygon mode the binary output must still be 100% exact (with its
+  // residual), not mislabeled "simplified".
+  const POLYGON_OPTIONS_JSON = JSON.stringify(
+    toVTracerOptions({ ...DEFAULT_SETTINGS, mode: "polygon" }),
+  );
+  const traceBinaryPolygon = (img: Img, tier: number) =>
+    traceBinaryLayers(
+      (w, h, p, j) => trace_rgba_to_json(w, h, p, j),
+      img.w,
+      img.h,
+      img.px,
+      tier,
+      POLYGON_OPTIONS_JSON,
+      img.px,
+      img.w,
+      img.h,
+    );
+
+  for (const [name, img] of Object.entries(FIXTURES)) {
+    it(`binary stays exact in Polygon mode: ${name}`, () => {
+      const out = traceBinaryPolygon(img, 8);
+      // Must be labeled exact (not simplified) and contain the residual
+      expect(out.metrics.pixelExact).toBe("exact");
+      for (const r of check(`BIN-POLY ${name}`, img, out.svg)) {
+        expect(r.exactPct).toBe(100);
+      }
+    });
+  }
+});

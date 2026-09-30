@@ -120,11 +120,13 @@ async function main() {
     const tier = prepped.paletteTier ?? 32;
     
     // Trace the paths the router specifies, then determine appPath
-    const pathSvgs = new Map<"binary" | "color", string>();
+    const pathSvgs = new Map<"binary" | "color", { svg: string; pixelExact: string }>();
     for (const path of routing.paths) {
       const start = Date.now();
       let svg: string;
-      let pixelExact = "exact";
+      // Missing reason is unknown, not exact: the bench must not pass on
+      // a missing claim (Claude review).
+      let pixelExact = "unknown";
       
       try {
         if (path === "binary") {
@@ -147,7 +149,7 @@ async function main() {
             OPTIONS_JSON
           ));
           svg = out.svg as string;
-          pixelExact = out.metrics.pixelExact ?? "exact";
+          pixelExact = out.metrics.pixelExact ?? "unknown";
         }
       } catch (e) {
         console.error(`  ${path}: TRACE FAILED - ${e}`);
@@ -181,7 +183,7 @@ async function main() {
         timeMs,
       };
       results.push(result);
-      pathSvgs.set(path, svg);
+      pathSvgs.set(path, { svg, pixelExact });
       
       // A non-exact result is honest by design (capped, simplified, bw),
       // not a regression: the old code dropped the same residual, it just
@@ -197,19 +199,23 @@ async function main() {
         (isExact ? "" : ` pixelExact=${pixelExact}`));
     }
     
-    // Determine which path the app ships (for tier images: smaller SVG)
+    // Determine which path the app ships (quality-aware: prefer exact,
+    // then smaller among the same pixelExact reason)
     if (routing.paths.length > 1) {
-      const binarySvg = pathSvgs.get("binary");
-      const colorSvg = pathSvgs.get("color");
-      if (binarySvg && colorSvg) {
-        const shipped = pickSmallerPath(binarySvg.length, colorSvg.length);
+      const binaryOut = pathSvgs.get("binary");
+      const colorOut = pathSvgs.get("color");
+      if (binaryOut && colorOut) {
+        const shipped = pickSmallerPath(
+          { svgLength: binaryOut.svg.length, pixelExact: binaryOut.pixelExact },
+          { svgLength: colorOut.svg.length, pixelExact: colorOut.pixelExact },
+        );
         // Update appPath for all results from this image
         for (const r of results) {
           if (r.image === name) {
             r.appPath = shipped;
           }
         }
-        console.log(`  -> app ships: ${shipped} (smaller SVG)`);
+        console.log(`  -> app ships: ${shipped} (quality-aware pick)`);
       }
     }
   }
@@ -235,6 +241,76 @@ async function main() {
     if (failures === 0) console.log("Baseline check passed (no >5% growth)");
   }
   
+  // Settings matrix (Claude review): the main bench only runs default
+  // settings, which missed the Polygon binary-path regression. On 2-3 tier
+  // images, verify that Polygon mode keeps the binary path exact (not
+  // mislabeled "simplified") and that the quality-aware pick ships the
+  // exact binary output over the smaller simplified color output.
+  console.log("\n--- Settings matrix (Polygon mode on tier images) ---");
+  const POLYGON_JSON = JSON.stringify(
+    toVTracerOptions({ ...DEFAULT_SETTINGS, mode: "polygon" }),
+  );
+  const matrixImages = files.slice(0, 3);
+  for (const file of matrixImages) {
+    const name = basename(file, ".png");
+    const rawImg = loadPng(resolve(imagesDir, file));
+    const scaled = boxDownscaleImg(rawImg, 1000);
+    const prepped = preprocessImageData(scaled.px, scaled.w, scaled.h);
+    if (prepped.paletteTier == null) {
+      console.log(`  ${name}: no tier, skipping matrix`);
+      continue;
+    }
+    const tier = prepped.paletteTier;
+    const binaryOut = traceBinaryLayers(
+      (w, h, p, j) => trace_rgba_to_json(w, h, p, j),
+      scaled.w,
+      scaled.h,
+      prepped.pixels,
+      tier,
+      POLYGON_JSON,
+      prepped.originalPixels,
+      scaled.w,
+      scaled.h,
+    );
+    const binaryExact = binaryOut.metrics.pixelExact;
+    const colorOut = JSON.parse(
+      trace_rgba_to_json_with_originals(
+        scaled.w,
+        scaled.h,
+        new Uint8Array(prepped.pixels),
+        new Uint8Array(prepped.originalPixels),
+        POLYGON_JSON,
+      ),
+    );
+    const colorExact = colorOut.metrics.pixelExact ?? "unknown";
+    const shipped = pickSmallerPath(
+      { svgLength: binaryOut.svg.length, pixelExact: binaryExact },
+      { svgLength: colorOut.svg.length, pixelExact: colorExact },
+    );
+    console.log(
+      `  ${name}: binary=${binaryExact} (${(binaryOut.svg.length / 1024).toFixed(0)}KB) ` +
+        `color=${colorExact} (${(colorOut.svg.length / 1024).toFixed(0)}KB) -> ships ${shipped}`,
+    );
+    // Binary must stay exact in Polygon mode; the shipped path must be exact
+    // if either path is exact.
+    if (binaryExact !== "exact") {
+      console.error(
+        `  ${name}: FAIL - binary path reported "${binaryExact}" in Polygon mode, expected "exact"`,
+      );
+      failures++;
+    }
+    const shippedExact = shipped === "binary" ? binaryExact : colorExact;
+    if (
+      (binaryExact === "exact" || colorExact === "exact") &&
+      shippedExact !== "exact"
+    ) {
+      console.error(
+        `  ${name}: FAIL - shipped ${shipped} (${shippedExact}) while an exact output existed`,
+      );
+      failures++;
+    }
+  }
+
   if (failures > 0) {
     console.error(`\n${failures} failures`);
     process.exit(1);

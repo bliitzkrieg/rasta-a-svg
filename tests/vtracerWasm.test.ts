@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { DEFAULT_SETTINGS } from "@/lib/vectorize/defaultSettings";
 import { toVTracerOptions } from "@/lib/vectorize/vtracerOptions";
 import {
@@ -9,20 +9,23 @@ import {
   trace_rgba_to_json_with_originals,
 } from "@/public/vendor/vtracer/vtracer_wasm.js";
 
-// Cold-start flake: the first WASM load can exceed vitest's default 5s
-// timeout on a cold run (e.g. CI after npm ci). Give this file 20s.
-vi.setConfig({ testTimeout: 20_000 });
+// Cold-start flake: the WASM initSync runs at module load time, outside any
+// test timeout (Claude review). Moving it into beforeAll puts it under
+// hookTimeout instead of failing the whole file silently on a slow load.
+vi.setConfig({ testTimeout: 20_000, hookTimeout: 30_000 });
 
-const wasmBytes = (() => {
+const wasmBytes: ArrayBuffer = (() => {
   const raw = readFileSync(
     resolve(__dirname, "../public/vendor/vtracer/vtracer_wasm_bg.wasm"),
   );
   const copy = new Uint8Array(raw.length);
   copy.set(raw);
-  return copy.buffer;
+  return copy.buffer as ArrayBuffer;
 })();
 
-initSync({ module: wasmBytes });
+beforeAll(() => {
+  initSync({ module: wasmBytes });
+});
 
 interface TracePoint {
   x: number;

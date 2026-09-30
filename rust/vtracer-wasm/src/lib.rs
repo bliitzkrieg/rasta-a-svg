@@ -691,9 +691,16 @@ fn build_color_output(
     // simplified, so the residual would patch the wrong pixels: skip it.
     let geometry_exact =
         options.mode == "none" || (options.mode == "spline" && options.exactFlatPolygons && options.flatClusterMaxDelta >= 255);
-    // Track why the result is or isn't pixel-exact. Starts as "exact" (will
-    // be downgraded if the residual is skipped).
-    let mut pixel_exact = String::from("exact");
+    // Track why the result is or isn't pixel-exact. Only "exact" when we
+    // have originals to build the residual from; without originals no
+    // correction is possible, so the claim would be unfounded (Claude
+    // review). The worker always passes originals, but the plain
+    // trace_rgba_to_json path (bench, tests) can hit this.
+    let mut pixel_exact = if originals.is_some() {
+        String::from("exact")
+    } else {
+        String::from("uncorrected")
+    };
     if let Some(orig) = originals {
         if !geometry_exact {
             // Simplified geometry: the residual cannot be correct, skip it.

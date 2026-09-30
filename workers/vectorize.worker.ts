@@ -233,10 +233,18 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
               );
         const colorTraced = JSON.parse(colorRaw) as VTracerTraceOutput;
 
-        // Ship whichever SVG is smaller (both are exact)
+        // Ship the better result: prefer exact over non-exact, then smaller.
+        // In Polygon mode the color path can be simplified while the binary
+        // path stays exact, so "smaller wins" alone ships worse files.
         const shippedPath = pickSmallerPath(
-          binaryTraced.svg.length,
-          colorTraced.svg.length,
+          {
+            svgLength: binaryTraced.svg.length,
+            pixelExact: binaryTraced.metrics.pixelExact ?? "unknown",
+          },
+          {
+            svgLength: colorTraced.svg.length,
+            pixelExact: colorTraced.metrics.pixelExact ?? "unknown",
+          },
         );
         if (shippedPath === "binary") {
           traced = binaryTraced;

@@ -64,8 +64,10 @@ export interface ConversionMetrics {
    * - "bw": B/W mode, never pixel-exact by design.
    * - "simplified": geometry simplified (e.g. Polygon curve fitting), so the
    *   correction layer cannot be correct.
+   * - "uncorrected": no originals available to build the correction from
+   *   (plain trace path without originals).
    * Undefined for results saved before v1.0.44 (treated as unknown). */
-  pixelExact?: "exact" | "capped" | "bw" | "simplified";
+  pixelExact?: "exact" | "capped" | "bw" | "simplified" | "uncorrected";
   /** @deprecated Use pixelExact instead. Kept for backwards compat with
    * results saved before v1.0.44. */
   pixelPerfect?: boolean;

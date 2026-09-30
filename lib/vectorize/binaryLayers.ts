@@ -27,7 +27,7 @@ export interface BinaryTraceOutput {
   height: number;
   layers: VectorLayer[];
   svg: string;
-  metrics: { nodeCount: number; pathCount: number; pixelExact: "exact" | "capped" | "simplified" };
+  metrics: { nodeCount: number; pathCount: number; pixelExact: "exact" | "capped" | "simplified" | "uncorrected" };
 }
 
 export type WasmTraceFn = (
@@ -506,22 +506,22 @@ export function traceBinaryLayers(
   // Capped like the Rust color-path residual (usually moot: the smaller SVG
   // wins the tier comparison, but kept for symmetry).
   //
-  // The residual assumes exact pixel-edge geometry. With Polygon curve
-  // fitting the paths are simplified, so the residual would patch the wrong
-  // pixels: skip it entirely (it only adds bytes).
+  // The residual assumes exact pixel-edge geometry. The Rust binary path
+  // (build_binary_output) always uses exact pixel edges when
+  // exactFlatPolygons is on, regardless of the curve-fitting mode: binary
+  // clusters are single-color by construction, so the mode only affects
+  // the color path. When exactFlatPolygons is off, the mode-based
+  // simplification applies and the residual would patch the wrong pixels:
+  // skip it entirely (it only adds bytes).
   let pixelExact: "exact" | "capped" | "simplified" = "exact";
   if (originalPixels != null) {
     const parsed = JSON.parse(optionsJson) as {
       residualMaxBytes?: number;
       mode?: string;
       exactFlatPolygons?: boolean;
-      flatClusterMaxDelta?: number;
     };
     const geometryExact =
-      parsed.mode === "none" ||
-      (parsed.mode === "spline" &&
-        parsed.exactFlatPolygons === true &&
-        (parsed.flatClusterMaxDelta ?? 0) >= 255);
+      parsed.mode === "none" || parsed.exactFlatPolygons === true;
     if (!geometryExact) {
       pixelExact = "simplified";
     } else {

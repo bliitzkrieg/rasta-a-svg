@@ -51,11 +51,29 @@ export function chooseTrace(
 
 /**
  * After tracing both paths for a tier image, pick which to ship.
- * Both are exact, so we ship the smaller SVG.
+ *
+ * Quality-aware: prefer an exact result over a non-exact one; among
+ * results with the same pixelExact reason, ship the smaller SVG.
+ * "Smaller wins" was only safe while both outputs were exact; in Polygon
+ * mode the color path can be simplified (78% exact) while the binary path
+ * stays exact, and blindly picking the smaller file ships visibly worse
+ * output.
  */
 export function pickSmallerPath(
-  binarySvgLength: number,
-  colorSvgLength: number,
+  binary: { svgLength: number; pixelExact: string },
+  color: { svgLength: number; pixelExact: string },
 ): TracePath {
-  return binarySvgLength <= colorSvgLength ? "binary" : "color";
+  // Lower rank = better. exact > capped > simplified/uncorrected/unknown.
+  // "bw" never reaches here (B/W mode skips the binary path entirely).
+  const rank = (p: string): number => {
+    if (p === "exact") return 0;
+    if (p === "capped") return 1;
+    return 2;
+  };
+  const binaryRank = rank(binary.pixelExact);
+  const colorRank = rank(color.pixelExact);
+  if (binaryRank !== colorRank) {
+    return binaryRank < colorRank ? "binary" : "color";
+  }
+  return binary.svgLength <= color.svgLength ? "binary" : "color";
 }
