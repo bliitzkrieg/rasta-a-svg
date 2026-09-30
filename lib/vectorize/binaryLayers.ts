@@ -341,6 +341,51 @@ export function recolorPaletteFills(
     }
     fills.push(best);
   }
+  // Edge-fragment snap: tiny layers (< RECOLOR_FLAT_MIN_PIXELS pixels) are
+  // usually anti-aliased fringe splinters. Their coverage vote can elect a
+  // blended mid-gradient color that renders as a visible halo line around
+  // the shape, even though the scoring tolerance cannot see the shift.
+  // Snap each tiny layer to the nearest large layer's fill (by RGB distance
+  // from the tiny layer's mode color), so fringe pixels take the adjacent
+  // solid color instead of a blend.
+  const largeFills: Rgb[] = [];
+  const largeIdx: number[] = [];
+  for (let r = 0; r < palette.length; r += 1) {
+    if (layerPixels[r].length >= RECOLOR_FLAT_MIN_PIXELS) {
+      largeFills.push(fills[r]);
+      largeIdx.push(r);
+    }
+  }
+  if (largeFills.length > 0) {
+    for (let r = 0; r < palette.length; r += 1) {
+      if (layerPixels[r].length >= RECOLOR_FLAT_MIN_PIXELS) {
+        continue;
+      }
+      if (layerPixels[r].length === 0) {
+        continue;
+      }
+      // Mode color of the tiny layer (most frequent exact original).
+      const tinySorted = [...counts[r].entries()].sort(
+        (a, b) => b[1] - a[1] || a[0] - b[0],
+      );
+      const tinyMode = keyToRgb(tinySorted[0][0]);
+      let bestLarge = 0;
+      let bestDist = Infinity;
+      for (let li = 0; li < largeFills.length; li += 1) {
+        const lf = largeFills[li];
+        const dist = Math.max(
+          Math.abs(tinyMode[0] - lf[0]),
+          Math.abs(tinyMode[1] - lf[1]),
+          Math.abs(tinyMode[2] - lf[2]),
+        );
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestLarge = li;
+        }
+      }
+      fills[r] = largeFills[bestLarge];
+    }
+  }
   return fills;
 }
 

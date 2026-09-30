@@ -1,4 +1,5 @@
 /// <reference lib="webworker" />
+// v1.0.33: force rebuild for edge-fragment snap fix
 
 import { toDXF } from "@/lib/export/dxf";
 import { toEPSLevel2 } from "@/lib/export/eps";
