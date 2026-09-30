@@ -26,7 +26,7 @@ export interface DecodedImage {
 const TARGET_MAX_DIMENSION = 1000;
 
 export async function decodeBlobToImageData(blob: Blob): Promise<DecodedImage> {
-  const bitmap = await createImageBitmap(blob);
+  const bitmap = await createImageBitmap(blob, { premultiplyAlpha: "none" });
   const maxSide = Math.max(bitmap.width, bitmap.height);
   const scale = maxSide > TARGET_MAX_DIMENSION ? TARGET_MAX_DIMENSION / maxSide : 1;
   const outputWidth = Math.max(1, Math.round(bitmap.width * scale));

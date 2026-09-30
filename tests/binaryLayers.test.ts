@@ -254,9 +254,11 @@ describe("traceBinaryLayers", () => {
     const fills = [...out.svg.matchAll(/fill="(#[0-9A-F]{6})"/g)].map(
       (m) => m[1],
     );
-    expect(new Set(fills)).toEqual(new Set(["#FAFAFA", "#000000"]));
+    // Mode-everywhere (Claude item 5): the black pixel's true original is
+    // (10,10,10), so the fill is #0A0A0A, not the palette's #000000.
+    expect(new Set(fills)).toEqual(new Set(["#FAFAFA", "#0A0A0A"]));
     expect(out.layers[0].color).toBe("#FAFAFA");
-    expect(out.layers[1].color).toBe("#000000");
+    expect(out.layers[1].color).toBe("#0A0A0A");
   });
 
   it("ranks layers on the original pixels when originalPixels are passed", () => {
@@ -314,14 +316,14 @@ describe("traceBinaryLayers", () => {
 describe("recolorPaletteFills", () => {
   it("composites semi-transparent originals over white", () => {
     // One semi-transparent original pixel (100,100,100,200) composites to
-    // (133,133,133); the prepped fill (150,150,150) is within tolerance of
-    // it, so the current color wins the tie and the fill is kept.
+    // (133,133,133). Mode-everywhere (Claude item 5) uses the true composited
+    // color, not the prepped fill.
     const prepped = makePixels(1, 1, () => [150, 150, 150, 255]);
     const original = makePixels(1, 1, () => [100, 100, 100, 200]);
     const palette = topOpaquePalette(prepped, 1, 1, 1);
     const ranks = paletteRanks(prepped, 1, 1, palette);
     expect(recolorPaletteFills(original, 1, 1, palette, ranks)).toEqual([
-      [150, 150, 150],
+      [133, 133, 133],
     ]);
   });
 

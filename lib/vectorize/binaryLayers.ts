@@ -305,15 +305,15 @@ export function recolorPaletteFills(
     // coverage vote, which is what recovers their true tones. The pixel
     // minimum keeps degenerate speck layers on the conservative
     // tie-break below.
-    const [modeKey, modeCount] = sorted[0];
-    // Force rebuild: ensures the worker bundle picks up the dominant-color guard.
-    if (
-      members.length >= RECOLOR_FLAT_MIN_PIXELS &&
-      modeCount / members.length >= 0.5
-    ) {
-      fills.push(keyToRgb(modeKey));
-      continue;
-    }
+    const [modeKey] = sorted[0];
+    // Use the mode color for all layers (Claude feedback item 5): it maximizes
+    // exact pixel matches. The residual layer corrects any errors, so this is
+    // safe. For gradients, the mode may not be ideal, but the residual patches
+    // the difference.
+    // Note: RECOLOR_FLAT_MIN_PIXELS and the 50% threshold are kept for the
+    // tiny-layer snap below, which needs to distinguish large vs tiny layers.
+    fills.push(keyToRgb(modeKey));
+    continue;
     const top = sorted
       .slice(0, RECOLOR_TOP_CANDIDATES)
       .map(([key]) => keyToRgb(key));
