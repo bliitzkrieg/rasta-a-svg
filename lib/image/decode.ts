@@ -15,6 +15,9 @@ import { paletteMergeImageData, shouldMergePalette } from "./paletteMerge";
 export interface DecodedImage {
   width: number;
   height: number;
+  /** Original source dimensions before downscaling (for SVG display size). */
+  sourceWidth: number;
+  sourceHeight: number;
   pixels: Uint8ClampedArray;
   /** Palette-snap tier that fired (n for tier 1, 16, or 32), or null when no tier did. */
   paletteTier: number | null;
@@ -190,6 +193,8 @@ export async function decodeBlobToImageData(blob: Blob): Promise<DecodedImage> {
   return {
     width: canvas.width,
     height: canvas.height,
+    sourceWidth: bitmap.width,
+    sourceHeight: bitmap.height,
     pixels: merged,
     paletteTier: tier,
     originalPixels: new Uint8ClampedArray(raw),

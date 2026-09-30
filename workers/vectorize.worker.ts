@@ -144,6 +144,8 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
           payload.paletteTier,
           optionsJson,
           originalPixels,
+          payload.sourceWidth,
+          payload.sourceHeight,
         );
         traced = {
           width: merged.width,

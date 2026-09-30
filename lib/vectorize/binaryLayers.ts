@@ -681,6 +681,8 @@ export function traceBinaryLayers(
   tier: number,
   optionsJson: string,
   originalPixels?: Uint8ClampedArray | null,
+  sourceWidth?: number,
+  sourceHeight?: number,
 ): BinaryTraceOutput {
   const palette = topOpaquePalette(pixels, width, height, tier);
   const binaryOptionsJson = JSON.stringify({
@@ -756,10 +758,15 @@ export function traceBinaryLayers(
       pathCount += 1;
     }
   }
+  // Use source dimensions for display size (if provided), but keep viewBox
+  // at the traced dimensions. This ensures images downscaled for tracing
+  // still display at their original size (Claude feedback item 2).
+  const displayWidth = sourceWidth ?? width;
+  const displayHeight = sourceHeight ?? height;
   const svg =
     `<?xml version="1.0" encoding="UTF-8" ?>\n` +
     `<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\n` +
-    `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" version="1.1" xmlns="http://www.w3.org/2000/svg">\n` +
+    `<svg width="${displayWidth}" height="${displayHeight}" viewBox="0 0 ${width} ${height}" version="1.1" xmlns="http://www.w3.org/2000/svg">\n` +
     `${svgParts.join("\n")}\n` +
     `</svg>\n`;
   return { width, height, layers, svg, metrics: { nodeCount, pathCount } };

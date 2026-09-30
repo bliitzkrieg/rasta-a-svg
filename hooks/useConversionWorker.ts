@@ -132,6 +132,8 @@ export function useConversionWorker(
           id: next.id,
           width: decoded.width,
           height: decoded.height,
+          sourceWidth: decoded.sourceWidth,
+          sourceHeight: decoded.sourceHeight,
           pixels: decoded.pixels,
           settings: state.settings,
           paletteTier: decoded.paletteTier,

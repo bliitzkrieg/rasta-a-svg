@@ -98,6 +98,9 @@ export interface ConvertJobRequest {
   id: string;
   width: number;
   height: number;
+  /** Original source dimensions before downscaling (for SVG display size). */
+  sourceWidth: number;
+  sourceHeight: number;
   pixels: Uint8ClampedArray;
   settings: ConversionSettings;
   /** Palette-snap tier that fired during decode (2, 8, or 16), if any. */
