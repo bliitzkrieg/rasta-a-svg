@@ -9,6 +9,7 @@ import {
   paletteRanksOnOriginals,
   recolorPaletteFills,
   rgbToHex,
+  splitSoupRanks,
   topOpaquePalette,
   traceBinaryLayers,
 } from "@/lib/vectorize/binaryLayers";
@@ -357,5 +358,91 @@ describe("recolorPaletteFills", () => {
     expect(recolorPaletteFills(original, 100, 1, palette, ranks)).toEqual([
       [255, 102, 0],
     ]);
+  });
+});
+
+describe("splitSoupRanks", () => {
+  it("leaves ranks untouched when the shipped fill already covers every member", () => {
+    // 100px, one rank, all pixels within tolerance of the fill: no balls,
+    // identical ranks and fills out.
+    const original = makePixels(100, 1, (x) =>
+      x < 80 ? [200, 0, 0, 255] : [205, 5, 5, 255],
+    );
+    const ranks = new Int32Array(100).fill(0);
+    const { ranks: out, fills } = splitSoupRanks(original, 100, 1, ranks, [
+      [200, 0, 0],
+    ]);
+    expect(fills).toEqual([[200, 0, 0]]);
+    expect(Array.from(out)).toEqual(Array.from(ranks));
+  });
+
+  it("carves leftover blend pixels into their own sub-layer", () => {
+    // 80px of A=(200,0,0) plus 20px of B=(0,0,200): B is far outside the
+    // 24 tolerance of the A fill, so it becomes a sub-ball painted right
+    // after its parent rank.
+    const original = makePixels(100, 1, (x) =>
+      x < 80 ? [200, 0, 0, 255] : [0, 0, 200, 255],
+    );
+    const ranks = new Int32Array(100).fill(0);
+    const { ranks: out, fills } = splitSoupRanks(original, 100, 1, ranks, [
+      [200, 0, 0],
+    ]);
+    expect(fills).toEqual([
+      [200, 0, 0],
+      [0, 0, 200],
+    ]);
+    for (let x = 0; x < 80; x += 1) {
+      expect(out[x]).toBe(0);
+    }
+    for (let x = 80; x < 100; x += 1) {
+      expect(out[x]).toBe(1);
+    }
+  });
+
+  it("keeps tiny leftover sets on the parent fill instead of a new layer", () => {
+    // Only 10 leftover pixels: below SPLIT_MIN_PIXELS, so no sub-layer.
+    const original = makePixels(100, 1, (x) =>
+      x < 90 ? [200, 0, 0, 255] : [0, 0, 200, 255],
+    );
+    const ranks = new Int32Array(100).fill(0);
+    const { ranks: out, fills } = splitSoupRanks(original, 100, 1, ranks, [
+      [200, 0, 0],
+    ]);
+    expect(fills).toEqual([[200, 0, 0]]);
+    expect(Array.from(out)).toEqual(Array.from(ranks));
+  });
+
+  it("inserts sub-balls immediately after their parent rank", () => {
+    // Two parent ranks; the second splits. New order: parent0 -> 0,
+    // parent1 -> 1, parent1's ball -> 2.
+    const original = makePixels(100, 1, (x) =>
+      x < 40
+        ? [200, 0, 0, 255]
+        : x < 80
+          ? [0, 200, 0, 255]
+          : [0, 0, 200, 255],
+    );
+    const ranks = new Int32Array(100).fill(1);
+    for (let x = 0; x < 40; x += 1) {
+      ranks[x] = 0;
+    }
+    const { ranks: out, fills } = splitSoupRanks(original, 100, 1, ranks, [
+      [200, 0, 0],
+      [0, 200, 0],
+    ]);
+    expect(fills).toEqual([
+      [200, 0, 0],
+      [0, 200, 0],
+      [0, 0, 200],
+    ]);
+    for (let x = 0; x < 40; x += 1) {
+      expect(out[x]).toBe(0);
+    }
+    for (let x = 40; x < 80; x += 1) {
+      expect(out[x]).toBe(1);
+    }
+    for (let x = 80; x < 100; x += 1) {
+      expect(out[x]).toBe(2);
+    }
   });
 });
