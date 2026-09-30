@@ -1,54 +1,75 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getFileBlob } from "@/lib/storage/indexedDb";
 import type { ConversionResult, ImageQueueItem } from "@/types/vector";
 
 /**
  * Resolves object URLs for the selected item's original blob and vector result,
  * with cleanup on change or unmount.
+ *
+ * The vector URL is derived directly from the result object via useMemo, so it
+ * can never go stale: when the conversion result changes (e.g. regenerating in
+ * B/W mode after a color conversion), a fresh blob URL is created
+ * synchronously during render.
  */
 export function usePreviewUrls(
   selectedItem: ImageQueueItem | undefined,
   results: Record<string, ConversionResult>,
 ): { originalUrl: string | undefined; vectorUrl: string | undefined } {
-  const [originalUrl, setOriginalUrl] = useState<string | undefined>();
-  const [vectorUrl, setVectorUrl] = useState<string | undefined>();
+  const result = selectedItem ? results[selectedItem.id] : undefined;
 
+  // Vector URL: derived from the result object itself. A new URL is created
+  // if and only if the result identity changes.
+  const vectorUrl = useMemo(() => {
+    if (!result) return undefined;
+    return URL.createObjectURL(
+      new Blob([result.svg], { type: "image/svg+xml" }),
+    );
+  }, [result]);
+
+  // Revoke the previous vector URL when a new one is created, and on unmount.
+  const prevVectorUrlRef = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (!selectedItem) {
+    const prev = prevVectorUrlRef.current;
+    if (prev && prev !== vectorUrl) {
+      URL.revokeObjectURL(prev);
+    }
+    prevVectorUrlRef.current = vectorUrl;
+    return () => {
+      const current = prevVectorUrlRef.current;
+      if (current) {
+        URL.revokeObjectURL(current);
+        prevVectorUrlRef.current = undefined;
+      }
+    };
+  }, [vectorUrl]);
+
+  // Original URL: resolved async from IndexedDB. Guarded against late
+  // resolutions after the selection changes.
+  const [originalUrl, setOriginalUrl] = useState<string | undefined>();
+  const selectedId = selectedItem?.id;
+  useEffect(() => {
+    if (!selectedId) {
       setOriginalUrl(undefined);
-      setVectorUrl(undefined);
       return;
     }
-
-    let revokedOriginal: string | undefined;
-    let revokedVector: string | undefined;
-
-    getFileBlob(selectedItem.id).then((blob) => {
+    let cancelled = false;
+    let url: string | undefined;
+    getFileBlob(selectedId).then((blob) => {
+      if (cancelled) return;
       if (blob) {
-        const url = URL.createObjectURL(blob);
-        revokedOriginal = url;
+        url = URL.createObjectURL(blob);
         setOriginalUrl(url);
+      } else {
+        setOriginalUrl(undefined);
       }
     });
-
-    const result = results[selectedItem.id];
-    if (result) {
-      const url = URL.createObjectURL(
-        new Blob([result.svg], { type: "image/svg+xml" }),
-      );
-      revokedVector = url;
-      setVectorUrl(url);
-    } else {
-      setVectorUrl(undefined);
-    }
-
     return () => {
-      if (revokedOriginal) URL.revokeObjectURL(revokedOriginal);
-      if (revokedVector) URL.revokeObjectURL(revokedVector);
+      cancelled = true;
+      if (url) URL.revokeObjectURL(url);
     };
-  }, [selectedItem, results]);
+  }, [selectedId]);
 
   return { originalUrl, vectorUrl };
 }
