@@ -193,31 +193,12 @@ export function innerSvgPaths(svg: string): string {
 }
 
 /**
- * Scoring tolerance of the honest parity metric: a pixel counts as
- * matching when its worst RGB channel differs by at most this much.
- */
-const RECOLOR_TOLERANCE = 24;
-/**
  * How many frequent original colors per layer are tried as fill
  * candidates (plus the current palette color, which is always tried).
  */
 // (removed RECOLOR_TOP_CANDIDATES - was only used by deleted unreachable code)
-/**
- * Flat-region guard only applies to layers with at least this many
- * pixels, so degenerate speck layers keep the conservative tie-break.
- */
-const RECOLOR_FLAT_MIN_PIXELS = 16;
-/**
- * How many frequent original colors among a rank's leftover pixels are
- * tried as sub-ball fill candidates by splitSoupRanks. Wider than the
- * recolor's top-16 because leftovers are a small, diverse pixel set.
- */
-const SPLIT_TOP_CANDIDATES = 64;
-/**
- * A sub-ball must cover at least this many leftover pixels to earn its
- * own traced layer; mirrors RECOLOR_FLAT_MIN_PIXELS.
- */
-const SPLIT_MIN_PIXELS = 16;
+// (removed RECOLOR_TOLERANCE - was only used by deleted unreachable code)
+// (removed RECOLOR_FLAT_MIN_PIXELS - was only used by deleted tiny-layer snap)
 
 /**
  * Recolor each binary-layer fill against the ORIGINAL (pre-prep) image.
@@ -311,197 +292,13 @@ export function recolorPaletteFills(
     // exact pixel matches. The residual layer corrects any errors, so this is
     // safe. For gradients, the mode may not be ideal, but the residual patches
     // the difference.
-    // Note: RECOLOR_FLAT_MIN_PIXELS and the 50% threshold are kept for the
-    // tiny-layer snap below, which needs to distinguish large vs tiny layers.
+    // Note: RECOLOR_FLAT_MIN_PIXELS and the 50% threshold are kept for
+    // historical reference but the tiny-layer snap was removed (v1.0.40):
+    // with the residual layer, tiny layers are exact anyway.
     fills.push(keyToRgb(modeKey));
     continue;
   }
-  // Edge-fragment snap: tiny layers (< RECOLOR_FLAT_MIN_PIXELS pixels) are
-  // usually anti-aliased fringe splinters. Their coverage vote can elect a
-  // blended mid-gradient color that renders as a visible halo line around
-  // the shape, even though the scoring tolerance cannot see the shift.
-  // Snap each tiny layer to the nearest large layer's fill (by RGB distance
-  // from the tiny layer's mode color), so fringe pixels take the adjacent
-  // solid color instead of a blend.
-  const largeFills: Rgb[] = [];
-  const largeIdx: number[] = [];
-  for (let r = 0; r < palette.length; r += 1) {
-    if (layerPixels[r].length >= RECOLOR_FLAT_MIN_PIXELS) {
-      largeFills.push(fills[r]);
-      largeIdx.push(r);
-    }
-  }
-  if (largeFills.length > 0) {
-    for (let r = 0; r < palette.length; r += 1) {
-      if (layerPixels[r].length >= RECOLOR_FLAT_MIN_PIXELS) {
-        continue;
-      }
-      if (layerPixels[r].length === 0) {
-        continue;
-      }
-      // Mode color of the tiny layer (most frequent exact original).
-      const tinySorted = [...counts[r].entries()].sort(
-        (a, b) => b[1] - a[1] || a[0] - b[0],
-      );
-      const tinyMode = keyToRgb(tinySorted[0][0]);
-      let bestLarge = 0;
-      let bestDist = Infinity;
-      for (let li = 0; li < largeFills.length; li += 1) {
-        const lf = largeFills[li];
-        const dist = Math.max(
-          Math.abs(tinyMode[0] - lf[0]),
-          Math.abs(tinyMode[1] - lf[1]),
-          Math.abs(tinyMode[2] - lf[2]),
-        );
-        if (dist < bestDist) {
-          bestDist = dist;
-          bestLarge = li;
-        }
-      }
-      fills[r] = largeFills[bestLarge];
-    }
-  }
   return fills;
-}
-
-/**
- * Split heterogeneous ("soup") binary ranks into sub-layers (v1.0.32).
- *
- * A rank's shipped fill is one color, but prep quantization can group a
- * whole anti-aliased blend ramp under one rank: the rank is measured on
- * the original colors against the prepped palette, so the ramp's pixels
- * all land on the nearest palette color while their true colors span a
- * range no single 24-ball can cover. The leftover pixels (farther than
- * the scoring tolerance from the shipped fill) are greedily carved into
- * 24-radius balls, set-cover style on the honest hit criterion; each
- * ball of at least SPLIT_MIN_PIXELS pixels becomes its own sub-layer
- * with its own fill, painted right after its parent rank.
- *
- * Self-gating: a rank whose shipped fill already covers every member
- * within tolerance produces no balls, so images at 1.0 are unaffected.
- * Returns reindexed integer ranks preserving the nested paint order.
- *
- * Parity harness: mirrors parity.py _split_soup_ranks 1:1.
- */
-export function splitSoupRanks(
-  originalPixels: Uint8ClampedArray,
-  width: number,
-  height: number,
-  ranks: Int32Array,
-  fills: Rgb[],
-): { ranks: Int32Array; fills: Rgb[] } {
-  const n = Math.min(
-    Math.floor(originalPixels.length / 4),
-    width * height,
-    ranks.length,
-  );
-  // Original color of pixel p, composited over white like the metric's
-  // reference (same compositing as recolorPaletteFills).
-  const orig = new Uint8Array(n * 3);
-  for (let p = 0; p < n; p += 1) {
-    const o = p * 4;
-    const a = originalPixels[o + 3];
-    const t = p * 3;
-    if (a === 255) {
-      orig[t] = originalPixels[o];
-      orig[t + 1] = originalPixels[o + 1];
-      orig[t + 2] = originalPixels[o + 2];
-    } else if (a === 0) {
-      orig[t] = 255;
-      orig[t + 1] = 255;
-      orig[t + 2] = 255;
-    } else {
-      const af = a / 255;
-      const inv = 1 - af;
-      orig[t] = Math.round(originalPixels[o] * af + 255 * inv);
-      orig[t + 1] = Math.round(originalPixels[o + 1] * af + 255 * inv);
-      orig[t + 2] = Math.round(originalPixels[o + 2] * af + 255 * inv);
-    }
-  }
-  const nRanks = fills.length;
-  const layerPixels: number[][] = fills.map(() => []);
-  for (let p = 0; p < n; p += 1) {
-    const r = ranks[p];
-    if (r >= 0 && r < nRanks) {
-      layerPixels[r].push(p);
-    }
-  }
-  const within = (p: number, c: Rgb): boolean => {
-    const t = p * 3;
-    return (
-      Math.max(
-        Math.abs(orig[t] - c[0]),
-        Math.abs(orig[t + 1] - c[1]),
-        Math.abs(orig[t + 2] - c[2]),
-      ) <= RECOLOR_TOLERANCE
-    );
-  };
-  const balls: { fill: Rgb; pixels: number[] }[][] = fills.map(() => []);
-  for (let r = 0; r < nRanks; r += 1) {
-    const members = layerPixels[r];
-    if (members.length === 0) {
-      continue;
-    }
-    const parentFill = fills[r];
-    let remaining = members.filter((p) => !within(p, parentFill));
-    while (remaining.length >= SPLIT_MIN_PIXELS) {
-      const counts = new Map<number, number>();
-      for (const p of remaining) {
-        const t = p * 3;
-        const key = rgbKey(orig[t], orig[t + 1], orig[t + 2]);
-        counts.set(key, (counts.get(key) ?? 0) + 1);
-      }
-      const sorted = [...counts.entries()].sort(
-        (a, b) => b[1] - a[1] || a[0] - b[0],
-      );
-      const cands = sorted
-        .slice(0, SPLIT_TOP_CANDIDATES)
-        .map(([key]) => keyToRgb(key));
-      let best = cands[0];
-      let bestCovered: number[] = [];
-      for (const c of cands) {
-        const covered = remaining.filter((p) => within(p, c));
-        if (covered.length > bestCovered.length) {
-          best = c;
-          bestCovered = covered;
-        }
-      }
-      if (bestCovered.length < SPLIT_MIN_PIXELS) {
-        break;
-      }
-      balls[r].push({ fill: best, pixels: bestCovered });
-      const taken = new Set(bestCovered);
-      remaining = remaining.filter((p) => !taken.has(p));
-    }
-  }
-  // Reindex: parent rank keeps its slot, its balls follow immediately,
-  // preserving the nested (rank >= r) paint order.
-  const newRanks = new Int32Array(n).fill(-1);
-  const newFills: Rgb[] = [];
-  let idx = 0;
-  for (let r = 0; r < nRanks; r += 1) {
-    const inBall = new Set<number>();
-    for (const b of balls[r]) {
-      for (const p of b.pixels) {
-        inBall.add(p);
-      }
-    }
-    for (const p of layerPixels[r]) {
-      if (!inBall.has(p)) {
-        newRanks[p] = idx;
-      }
-    }
-    newFills.push(fills[r]);
-    idx += 1;
-    for (const b of balls[r]) {
-      for (const p of b.pixels) {
-        newRanks[p] = idx;
-      }
-      newFills.push(b.fill);
-      idx += 1;
-    }
-  }
-  return { ranks: newRanks, fills: newFills };
 }
 
 /**
@@ -516,7 +313,7 @@ export function splitSoupRanks(
 /**
  * Build a residual correction layer (Claude feedback item 6).
  *
- * Compares the predicted raster (fills[splitRanks[p]]) against the original
+ * Compares the predicted raster (fills[ranks[p]]) against the original
  * RGBA pixels. Pixels that differ are grouped by exact RGBA color, and each
  * color gets one <path> with rectangle subpaths for runs of same-colored
  * pixels (scanned row by row). This achieves lossless output at 1:1.
@@ -650,33 +447,21 @@ export function traceBinaryLayers(
     originalPixels != null
       ? paletteRanksOnOriginals(originalPixels, width, height, palette)
       : paletteRanks(pixels, width, height, palette);
-  let splitRanks = ranks;
-  let splitFills: Rgb[] =
+  // Note: splitSoupRanks was removed in v1.0.40 (Claude measurement showed
+  // it cost 33-40% file size with no accuracy benefit; the residual layer
+  // handles blend ramps exactly).
+  const fills: Rgb[] =
     originalPixels != null
       ? recolorPaletteFills(originalPixels, width, height, palette, ranks)
       : palette;
-  if (originalPixels != null) {
-    // v1.0.32: carve heterogeneous ranks into sub-layers so blend ramps
-    // get their own fills. Self-gating: ranks the recolor already covers
-    // keep their exact pixels and fills.
-    const split = splitSoupRanks(
-      originalPixels,
-      width,
-      height,
-      ranks,
-      splitFills,
-    );
-    splitRanks = split.ranks;
-    splitFills = split.fills;
-  }
   const layers: VectorLayer[] = [];
   const svgParts: string[] = [];
   let nodeCount = 0;
   let pathCount = 0;
-  for (let r = 0; r < splitFills.length; r += 1) {
+  for (let r = 0; r < fills.length; r += 1) {
     const bin = new Uint8Array(width * height * 4);
-    for (let p = 0; p < splitRanks.length; p += 1) {
-      const v = splitRanks[p] >= r ? 0 : 255;
+    for (let p = 0; p < ranks.length; p += 1) {
+      const v = ranks[p] >= r ? 0 : 255;
       const o = p * 4;
       bin[o] = v;
       bin[o + 1] = v;
@@ -688,7 +473,7 @@ export function traceBinaryLayers(
     if (traced.layers.length === 0) {
       continue;
     }
-    const hex = rgbToHex(splitFills[r]);
+    const hex = rgbToHex(fills[r]);
     const name = `COLOR_${String(r + 1).padStart(2, "0")}`;
     for (const layer of traced.layers) {
       layers.push({ name, color: hex, paths: layer.paths });
@@ -700,15 +485,15 @@ export function traceBinaryLayers(
     pathCount += traced.metrics.pathCount;
   }
   // Residual correction layer (Claude feedback item 6): pixels where the
-  // predicted raster (fills[splitRanks[p]]) differs from the original get
+  // predicted raster (fills[ranks[p]]) differs from the original get
   // exact rectangle paths on top. With threshold 0 this is lossless at 1:1.
   if (originalPixels != null) {
     const residualSvg = buildResidualLayer(
       originalPixels,
       width,
       height,
-      splitRanks,
-      splitFills,
+      ranks,
+      fills,
     );
     if (residualSvg) {
       svgParts.push(residualSvg);

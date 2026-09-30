@@ -349,6 +349,21 @@ fn trace_color_image(
     options: &TraceOptions,
 ) -> Result<TraceOutput, JsValue> {
     let mut image = build_color_image(width, height, pixels);
+    // When originals are given (residual layer active), pixels that aren't
+    // fully opaque in the original must not be painted by the tracer at all.
+    // The residual layer paints them with exact color + fill-opacity over the
+    // page. If the tracer paints them (even with flatten_alpha), the residual
+    // would composite on top of an opaque fill instead of the background.
+    // So: key out any pixel where the original alpha isn't 255.
+    if let Some(orig) = originals {
+        let n = image.pixels.len() / 4;
+        for i in 0..n {
+            let oa = orig[i * 4 + 3];
+            if oa != 255 {
+                image.pixels[i * 4 + 3] = 0;
+            }
+        }
+    }
     // The clustering below only looks at RGB, so a semi-transparent halo
     // (very common on PNG logos) would be treated as fully opaque and
     // fatten every shape. Flatten transparency first: pixels that are at
@@ -574,6 +589,8 @@ fn build_color_output(
     let mut svg_entries: Vec<String> = Vec::new();
     let mut node_count = 0usize;
     let mut path_count = 0usize;
+    // Store fill RGBs in paint order for residual layer reuse (avoids recomputing)
+    let mut fill_rgbs: Vec<(u8, u8, u8)> = Vec::new();
 
     let view = clusters.view();
     // Paint order: later entries cover earlier ones. Each cluster's visible
@@ -609,6 +626,11 @@ fn build_color_output(
             Some(orig) => recolor_cluster_fill(cluster, &visible_sets[order], orig),
             None => cluster.residue_color().to_hex_string(),
         };
+        // Store RGB for residual layer (parse hex once, reuse later)
+        let r = u8::from_str_radix(&fill_color[1..3], 16).unwrap_or(0);
+        let g = u8::from_str_radix(&fill_color[3..5], 16).unwrap_or(0);
+        let b = u8::from_str_radix(&fill_color[5..7], 16).unwrap_or(0);
+        fill_rgbs.push((r, g, b));
         let compound = cluster.to_compound_path(
             &view,
             false,
@@ -654,22 +676,11 @@ fn build_color_output(
                 }
             }
         }
-        // Get fill colors in paint order
-        let mut fill_rgbs: Vec<(u8, u8, u8)> = Vec::with_capacity(paint_order.len());
-        for (order, cluster) in paint_order.iter().enumerate() {
-            let fill_hex = match originals {
-                Some(o) => recolor_cluster_fill(cluster, &visible_sets[order], o),
-                None => cluster.residue_color().to_hex_string(),
-            };
-            // Parse hex to RGB
-            let r = u8::from_str_radix(&fill_hex[1..3], 16).unwrap_or(0);
-            let g = u8::from_str_radix(&fill_hex[3..5], 16).unwrap_or(0);
-            let b = u8::from_str_radix(&fill_hex[5..7], 16).unwrap_or(0);
-            fill_rgbs.push((r, g, b));
-        }
+        // fill_rgbs was already computed in paint order during the main loop above.
         // Find mismatched pixels and group by color
-        use std::collections::HashMap;
-        let mut by_color: HashMap<u32, Vec<(u32, u32)>> = HashMap::new();
+        // Use BTreeMap for deterministic SVG output (HashMap order varies run to run)
+        use std::collections::BTreeMap;
+        let mut by_color: BTreeMap<u32, Vec<(u32, u32)>> = BTreeMap::new();
         for y in 0..height {
             for x in 0..width {
                 let p = (y * width + x) as usize;
@@ -711,7 +722,8 @@ fn build_color_output(
             let g = ((key >> 16) & 0xff) as u8;
             let b = ((key >> 8) & 0xff) as u8;
             let a = (key & 0xff) as u8;
-            pixels.sort_by(|a, b| a.1.cmp(&b.1).then(a.0.cmp(&b.0)));
+            // Pixels are already in row-major order (pushed y-outer, x-inner above),
+            // so no sort is needed.
             let mut paths = Vec::new();
             let mut i = 0;
             while i < pixels.len() {
@@ -723,9 +735,9 @@ fn build_color_output(
                 }
                 let w = ex - sx + 1;
                 if w == 1 {
-                    paths.push(format!("M{} {}h1v1z", sx, sy));
+                    paths.push(format!("M{} {}h1v1h-1z", sx, sy));
                 } else {
-                    paths.push(format!("M{} {}h{}v1z", sx, sy, w));
+                    paths.push(format!("M{} {}h{}v1h-{}z", sx, sy, w, w));
                 }
                 i += 1;
             }
