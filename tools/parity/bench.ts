@@ -106,14 +106,19 @@ async function main() {
   
   const results: BenchResult[] = [];
   let failures = 0;
-  
+
+  // Remember each image's palette tier from the main loop so the settings
+  // matrix can reuse it without re-decoding (Claude review).
+  const tierByFile = new Map<string, number | null>();
+
   for (const file of files) {
     const name = basename(file, ".png");
     console.log(`Benchmarking ${name}...`);
-    
+
     const rawImg = loadPng(resolve(imagesDir, file));
     const scaled = boxDownscaleImg(rawImg, 1000);
     const prepped = preprocessImageData(scaled.px, scaled.w, scaled.h);
+    tierByFile.set(file, prepped.paletteTier);
     
     // Use the shared routing logic so the bench scores what the app ships
     const routing = chooseTrace(prepped.paletteTier, DEFAULT_SETTINGS.clusteringMode);
@@ -252,27 +257,25 @@ async function main() {
   );
   // Pick the first 3 images that actually have a tier; the matrix tests
   // nothing (but still passes) if the first files alphabetically have no
-  // tier (Claude review). Fail loudly if there are none.
-  const matrixImages: string[] = [];
+  // tier (Claude review). Fail loudly if there are none. Tiers come from
+  // the main loop above, no re-decoding.
+  const matrixTiers: Array<{ file: string; tier: number }> = [];
   for (const file of files) {
-    const rawImg = loadPng(resolve(imagesDir, file));
-    const scaled = boxDownscaleImg(rawImg, 1000);
-    const prepped = preprocessImageData(scaled.px, scaled.w, scaled.h);
-    if (prepped.paletteTier != null) {
-      matrixImages.push(file);
-      if (matrixImages.length >= 3) break;
+    const tier = tierByFile.get(file);
+    if (tier != null) {
+      matrixTiers.push({ file, tier });
+      if (matrixTiers.length >= 3) break;
     }
   }
-  if (matrixImages.length === 0) {
+  if (matrixTiers.length === 0) {
     console.error("Settings matrix: no tier images found, cannot verify Polygon mode");
     failures++;
   }
-  for (const file of matrixImages) {
+  for (const { file, tier } of matrixTiers) {
     const name = basename(file, ".png");
     const rawImg = loadPng(resolve(imagesDir, file));
     const scaled = boxDownscaleImg(rawImg, 1000);
     const prepped = preprocessImageData(scaled.px, scaled.w, scaled.h);
-    const tier = prepped.paletteTier ?? 32;
     const binaryOut = traceBinaryLayers(
       (w, h, p, j) => trace_rgba_to_json(w, h, p, j),
       scaled.w,

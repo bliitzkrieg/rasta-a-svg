@@ -2,12 +2,13 @@ import { defineConfig } from "vitest/config";
 import path from "node:path";
 
 export default defineConfig({
-  // Tests don't need static assets, and serving public/ as assets can cause
-  // the WASM glue import to resolve without its named exports on a cold
-  // first run (Claude review: "initSync is not a function" flake).
+  // The WASM glue import races between parallel test files on a cold
+  // start ("initSync is not a function" in vtracerWasm.test.ts).
+  // Serial test files remove the race (Claude review); ~5 s slower.
   publicDir: false,
   test: {
-    environment: "node"
+    environment: "node",
+    fileParallelism: false
   },
   resolve: {
     alias: {
