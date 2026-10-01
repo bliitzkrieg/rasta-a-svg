@@ -1,63 +1,48 @@
-export function Logo({ className }: { className?: string }) {
+import { BRAND, markGeometry } from "@/lib/brandMark";
+
+interface LogoProps {
+  className?: string;
+  /** Mark size in px; the wordmark scales with it. */
+  size?: number;
+  /** Hide the wordmark (mark only). */
+  markOnly?: boolean;
+}
+
+const geometry = markGeometry({ detail: "fine" });
+
+/**
+ * The png2svg.io logo: the pixel-to-vector mark plus an HTML wordmark (real
+ * text in the site font, so it stays crisp and theme-aware). Decorative:
+ * the surrounding link carries the accessible name.
+ */
+export function Logo({ className, size = 32, markOnly = false }: LogoProps) {
   return (
-    <svg
-      viewBox="0 0 350 72"
-      className={className}
-      role="img"
-      aria-label="png2svg.io home"
+    <span
+      className={`brand-logo${className ? ` ${className}` : ""}`}
+      style={{ "--logo-size": `${size}px` } as React.CSSProperties}
+      aria-hidden="true"
     >
-      {/* Back document: PNG, raster pixels */}
-      <path
-        d="M6 22a10 10 0 0 1 10-10h22l14 14v26a10 10 0 0 1-10 10H16a10 10 0 0 1-10-10Z"
-        fill="#2281b3"
-      />
-      <path d="M38 12l14 14H38Z" fill="#1a6a96" />
-      <g fill="#ffffff" opacity="0.92">
-        <rect x="19" y="32" width="5.5" height="5.5" rx="1" />
-        <rect x="28" y="32" width="5.5" height="5.5" rx="1" />
-        <rect x="37" y="32" width="5.5" height="5.5" rx="1" />
-        <rect x="19" y="41" width="5.5" height="5.5" rx="1" />
-        <rect x="28" y="41" width="5.5" height="5.5" rx="1" />
-        <rect x="37" y="41" width="5.5" height="5.5" rx="1" />
-        <rect x="19" y="50" width="5.5" height="5.5" rx="1" />
-        <rect x="28" y="50" width="5.5" height="5.5" rx="1" />
-        <rect x="37" y="50" width="5.5" height="5.5" rx="1" />
-      </g>
-      {/* Front document: SVG, bezier vector */}
-      <path
-        d="M44 18a10 10 0 0 1 10-10h24l16 16v28a10 10 0 0 1-10 10H54a10 10 0 0 1-10-10Z"
-        fill="#fb6a15"
-      />
-      <path d="M78 8l16 16H78Z" fill="#e55a08" />
-      <path
-        d="M60 37l-6 7M78 37l6 7"
-        stroke="#ffffff"
-        strokeWidth="1.5"
-        opacity="0.55"
-      />
-      <path
-        d="M54 44c8-14 22-14 30 0"
-        stroke="#ffffff"
-        strokeWidth="4"
-        fill="none"
-        strokeLinecap="round"
-      />
-      <rect x="51.5" y="41.5" width="5" height="5" fill="#ffffff" />
-      <rect x="81.5" y="41.5" width="5" height="5" fill="#ffffff" />
-      {/* Wordmark: inherits theme ink via currentColor */}
-      <text
-        x="106"
-        y="48"
-        fontFamily="Manrope, 'Segoe UI', system-ui, sans-serif"
-        fontSize="40"
-        fontWeight="800"
-        letterSpacing="-1"
-        fill="currentColor"
-        textLength="236"
-        lengthAdjust="spacingAndGlyphs"
-      >
-        png2svg.io
-      </text>
-    </svg>
+      <svg viewBox="0 0 64 64" width={size} height={size} className="brand-logo-mark" focusable="false">
+        <rect width="64" height="64" rx={geometry.cornerRadius} fill={BRAND.ink} className="brand-logo-tile" />
+        <g fill={BRAND.blue}>
+          {geometry.cells.map((cell) => (
+            <rect
+              key={`${cell.x}-${cell.y}`}
+              x={cell.x}
+              y={cell.y}
+              width={cell.size}
+              height={cell.size}
+              rx="1"
+            />
+          ))}
+        </g>
+        <path d={geometry.arcPath} fill={BRAND.orange} />
+      </svg>
+      {markOnly ? null : (
+        <span className="brand-logo-word">
+          png2svg<span className="brand-logo-tld">.io</span>
+        </span>
+      )}
+    </span>
   );
 }

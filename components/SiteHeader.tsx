@@ -42,7 +42,7 @@ export function SiteHeader() {
     <header className={styles.header} data-scrolled={scrolled}>
       <div className={styles.inner}>
         <Link href="/" className={styles.brand} aria-label="png2svg.io home">
-          <Logo className={styles.logo} />
+          <Logo className={styles.logo} size={32} />
         </Link>
         <nav className={styles.nav} aria-label="Main">
           {PRIMARY_NAV.map((item) => (

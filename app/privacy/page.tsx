@@ -33,12 +33,13 @@ export default function PrivacyPage() {
         else&apos;s.
       </p>
       <p>
-        So that your work survives a page reload, the images you add are stored
-        locally in your browser (IndexedDB) until you remove them. Your
-        converter settings and theme choice are stored in your browser&apos;s
-        local storage. This data stays on your device; you can clear it at any
-        time with the &ldquo;Remove all images&rdquo; button or your
-        browser&apos;s site-data settings.
+        While you work, the images you add are held in your browser&apos;s
+        local storage (IndexedDB) so the converter can process them. They are
+        cleared when you remove them, use &ldquo;Remove all images&rdquo;, or
+        next open the converter. Your converter settings and theme choice are
+        kept in your browser&apos;s local storage. All of this stays on your
+        device, and you can clear it at any time in your browser&apos;s
+        site-data settings.
       </p>
 
       <h2>Analytics</h2>

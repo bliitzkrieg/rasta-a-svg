@@ -36,7 +36,7 @@ const faqs = [
   {
     question: "Is it safe to convert a client's logo here?",
     answer:
-      "Conversion runs entirely in your browser with WebAssembly, and the image is never uploaded to a server. Files stay in your browser's local storage until you remove them.",
+      "Conversion runs entirely in your browser with WebAssembly, and the image is never uploaded to a server. Files are only held in your browser while you work.",
   },
 ];
 

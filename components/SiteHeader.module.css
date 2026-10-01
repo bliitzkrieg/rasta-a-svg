@@ -28,14 +28,13 @@
 
 .brand {
   display: inline-flex;
+  text-decoration: none;
   align-items: center;
   line-height: 0;
   flex-shrink: 0;
 }
 
 .logo {
-  width: 168px;
-  height: auto;
   color: var(--ink);
 }
 
@@ -135,10 +134,6 @@
 
   .menuButton {
     display: inline-flex;
-  }
-
-  .logo {
-    width: 148px;
   }
 }
 

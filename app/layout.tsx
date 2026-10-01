@@ -24,7 +24,7 @@ const structuredData = {
       "@id": `${SITE_URL}/#organization`,
       name: "PNG2SVG.IO",
       url: SITE_URL,
-      logo: `${SITE_URL}/icon.svg`,
+      logo: `${SITE_URL}/icon-512.png`,
     },
     {
       "@type": "WebSite",
@@ -66,7 +66,16 @@ const CONSENT_REGIONS = [
   "PT", "RO", "SK", "SI", "ES", "SE", "GB", "CH",
 ];
 
-const GA_INIT = `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('consent','default',{ad_storage:'denied',ad_user_data:'denied',ad_personalization:'denied',analytics_storage:'denied',region:${JSON.stringify(CONSENT_REGIONS)}});gtag('js',new Date());gtag('config','G-KN4F0R7K5F');`;
+// Runs inline in <head>, before AdSense or gtag.js load: Google requires the
+// consent default to be set before any of its tags read it.
+const CONSENT_DEFAULT = `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('consent','default',{ad_storage:'denied',ad_user_data:'denied',ad_personalization:'denied',analytics_storage:'denied',region:${JSON.stringify(CONSENT_REGIONS)}});`;
+
+// Loads AdSense from <head> right after the consent default, so the order is
+// guaranteed. (A plain async <script> tag gets hoisted above inline scripts
+// by React 19, and next/script adds a data-nscript attribute AdSense rejects.)
+const ADSENSE_LOADER = `(function(){var s=document.createElement('script');s.async=true;s.crossOrigin='anonymous';s.src='https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${ADSENSE_CLIENT}';document.head.appendChild(s);})();`;
+
+const GA_INIT = `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-KN4F0R7K5F');`;
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -144,15 +153,16 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_SCRIPT }}
           suppressHydrationWarning
         />
+        <script
+          dangerouslySetInnerHTML={{ __html: CONSENT_DEFAULT }}
+          suppressHydrationWarning
+        />
+        <script
+          dangerouslySetInnerHTML={{ __html: ADSENSE_LOADER }}
+          suppressHydrationWarning
+        />
       </head>
       <body className={`${manrope.className} ${manrope.variable}`}>
-        {/* React 19 hoists async scripts into <head> as a resource. A plain
-            tag keeps AdSense happy (it rejects next/script's data-nscript). */}
-        <script
-          async
-          src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${ADSENSE_CLIENT}`}
-          crossOrigin="anonymous"
-        />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
