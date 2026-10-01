@@ -141,6 +141,22 @@ function CompareView({
   const scrollRef = useRef<HTMLDivElement>(null);
   const [viewport, setViewport] = useState({ width: 0, height: 0, scrollLeft: 0 });
   const draggingRef = useRef(false);
+  // Dragging only re-renders this view; the app state (and the persisted
+  // preference) is updated once when the drag ends.
+  const [position, setPosition] = useState(sliderPosition);
+  const [syncedPosition, setSyncedPosition] = useState(sliderPosition);
+  if (sliderPosition !== syncedPosition) {
+    setSyncedPosition(sliderPosition);
+    setPosition(sliderPosition);
+  }
+  const positionRef = useRef(position);
+  useEffect(() => {
+    positionRef.current = position;
+  }, [position]);
+  const updatePosition = (value: number) => {
+    positionRef.current = value;
+    setPosition(value);
+  };
 
   const zoomed = zoom !== "fit";
   const contentWidth = zoomed ? imageWidth * zoom : 0;
@@ -174,24 +190,26 @@ function CompareView({
   // the same width the clip math uses, so line and clip edge always agree.
   const positionFromClientX = (clientX: number) => {
     const el = scrollRef.current;
-    if (!el || el.clientWidth === 0) return sliderPosition;
+    if (!el || el.clientWidth === 0) return positionRef.current;
     const rect = el.getBoundingClientRect();
     return Math.max(0, Math.min(100, ((clientX - rect.left) / el.clientWidth) * 100));
   };
   const stopDragging = () => {
+    if (!draggingRef.current) return;
     draggingRef.current = false;
+    onSliderPositionChange(positionRef.current);
   };
   const dividerLeft =
-    viewport.width > 0 ? `${(sliderPosition / 100) * viewport.width}px` : `${sliderPosition}%`;
+    viewport.width > 0 ? `${(position / 100) * viewport.width}px` : `${position}%`;
 
   // Divider position in viewport px, mapped into the zoomed content.
   let clipRight: string;
   if (!zoomed) {
-    clipRight = `${100 - sliderPosition}%`;
+    clipRight = `${100 - position}%`;
   } else {
     const offsetLeft = Math.max(0, (viewport.width - contentWidth) / 2);
     const dividerInContent =
-      viewport.scrollLeft + (sliderPosition / 100) * viewport.width - offsetLeft;
+      viewport.scrollLeft + (position / 100) * viewport.width - offsetLeft;
     clipRight = `${Math.max(0, Math.min(contentWidth, contentWidth - dividerInContent))}px`;
   }
 
@@ -215,11 +233,11 @@ function CompareView({
               if (zoomed || event.button !== 0) return;
               draggingRef.current = true;
               event.currentTarget.setPointerCapture(event.pointerId);
-              onSliderPositionChange(positionFromClientX(event.clientX));
+              updatePosition(positionFromClientX(event.clientX));
             }}
             onPointerMove={(event) => {
               if (!draggingRef.current) return;
-              onSliderPositionChange(positionFromClientX(event.clientX));
+              updatePosition(positionFromClientX(event.clientX));
             }}
             onPointerUp={stopDragging}
             onPointerCancel={stopDragging}
@@ -252,7 +270,7 @@ function CompareView({
               }}
               onPointerMove={(event) => {
                 if (!draggingRef.current) return;
-                onSliderPositionChange(positionFromClientX(event.clientX));
+                updatePosition(positionFromClientX(event.clientX));
               }}
               onPointerUp={stopDragging}
               onPointerCancel={stopDragging}
@@ -306,8 +324,12 @@ function CompareView({
         type="range"
         min={0}
         max={100}
-        value={Math.round(sliderPosition)}
-        onChange={(event) => onSliderPositionChange(Number(event.target.value))}
+        value={Math.round(position)}
+        onChange={(event) => {
+          const value = Number(event.target.value);
+          updatePosition(value);
+          onSliderPositionChange(value);
+        }}
       />
     </div>
   );
