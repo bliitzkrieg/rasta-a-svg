@@ -19,6 +19,8 @@ interface DownloadMenuProps {
   size?: "default" | "compact";
   /** Open the menu above the button (inside the preview canvas). */
   placement?: "top" | "bottom";
+  /** The SVG has a pixel-correction layer, so a clean download differs. */
+  hasCorrections?: boolean;
 }
 
 const FORMAT_LABEL: Record<ExportFormat, string> = {
@@ -36,6 +38,7 @@ export function DownloadMenu({
   onDownloadAll,
   size = "default",
   placement = "bottom",
+  hasCorrections = false,
 }: DownloadMenuProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -114,17 +117,19 @@ export function DownloadMenu({
               </span>
             </button>
           ))}
-          <button
-            type="button"
-            role="menuitem"
-            className={styles.item}
-            onClick={() => choose("svg-clean")}
-          >
-            Download clean SVG
-            <span className={styles.hint}>
-              No pixel corrections. Best for Cricut and cutters.
-            </span>
-          </button>
+          {hasCorrections ? (
+            <button
+              type="button"
+              role="menuitem"
+              className={styles.item}
+              onClick={() => choose("svg-clean")}
+            >
+              Download clean SVG
+              <span className={styles.hint}>
+                Without the pixel-correction layer, for editing
+              </span>
+            </button>
+          ) : null}
           {onDownloadAll ? (
             <>
               <div className={styles.separator} role="separator" />

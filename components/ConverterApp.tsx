@@ -16,6 +16,7 @@ import { downloadAsZip, downloadString } from "@/lib/download";
 import { ACCEPTED_IMAGE_TYPES, baseName, byteLength, formatBytes } from "@/lib/format";
 import { APP_VERSION } from "@/lib/version";
 import { trackEvent } from "@/lib/analytics";
+import { PRESETS, type PresetId } from "@/lib/presets";
 import { makeQueueItem, withUpdated } from "@/lib/queueUtils";
 import { clearAllData, deleteItemData, putFileBlob } from "@/lib/storage/indexedDb";
 import { defaultPersistedState } from "@/lib/storage/localState";
@@ -42,6 +43,8 @@ interface ConverterAppProps {
   defaultFormat?: ExportFormat;
   /** "home": full hero with the page <h1>. "compact": landing-page dropzone. */
   hero?: "home" | "compact";
+  /** Preset applied on load instead of the saved settings (the Cricut page). */
+  defaultPreset?: PresetId;
 }
 
 type Toast = { kind: "success" | "error"; message: string };
@@ -52,7 +55,11 @@ const MIME: Record<ExportFormat, string> = {
   dxf: "application/dxf",
 };
 
-export default function ConverterApp({ defaultFormat = "svg", hero = "home" }: ConverterAppProps) {
+export default function ConverterApp({
+  defaultFormat = "svg",
+  hero = "home",
+  defaultPreset,
+}: ConverterAppProps) {
   const [appState, setAppState] = useState<PersistedAppState>(() => defaultPersistedState());
   const [results, setResults] = useState<Record<string, ConversionResult>>({});
   const [activePhase, setActivePhase] = useState<string>("Idle");
@@ -62,7 +69,12 @@ export default function ConverterApp({ defaultFormat = "svg", hero = "home" }: C
   const [notice, setNotice] = useState<string | null>(null);
   const [settingsPending, setSettingsPending] = useState(false);
 
-  usePersistedPreferences(appState, setAppState, setResults);
+  usePersistedPreferences(
+    appState,
+    setAppState,
+    setResults,
+    defaultPreset ? PRESETS.find((preset) => preset.id === defaultPreset)?.settings : undefined,
+  );
   useServiceWorkerCleanup();
 
   useEffect(() => {
@@ -86,6 +98,10 @@ export default function ConverterApp({ defaultFormat = "svg", hero = "home" }: C
   const doneCount = appState.queue.filter((item) => item.status === "done").length;
   const svgBytes = useMemo(
     () => (selectedResult ? byteLength(selectedResult.svg) : undefined),
+    [selectedResult],
+  );
+  const hasCorrections = useMemo(
+    () => selectedResult?.svg.includes('<g id="pixel-corrections">') ?? false,
     [selectedResult],
   );
 
@@ -362,6 +378,7 @@ export default function ConverterApp({ defaultFormat = "svg", hero = "home" }: C
       busy={exportBusy}
       onExport={(type) => void onExport(type)}
       onDownloadAll={doneCount > 1 ? () => void onDownloadAll() : undefined}
+      hasCorrections={hasCorrections}
       size={size}
       placement={size === "compact" ? "top" : "bottom"}
     />
@@ -440,6 +457,9 @@ export default function ConverterApp({ defaultFormat = "svg", hero = "home" }: C
             <ResultDetail
               result={selectedResult}
               svgBytes={svgBytes}
+              onUseCutPreset={() =>
+                onSettingsChange(PRESETS.find((preset) => preset.id === "cricut")!.settings)
+              }
               downloadControl={selectedResult ? downloadMenu("default") : undefined}
             />
             {selectedItem?.error ? (

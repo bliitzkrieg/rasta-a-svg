@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { PresetId } from "@/lib/presets";
 import type { ReactNode } from "react";
 import ConverterApp from "./ConverterApp";
 import { SiteFooter } from "./SiteFooter";
@@ -26,7 +27,7 @@ interface ArticleLayoutProps {
   /** Show the "Try the free converter" box at the end. Converter pages hide it. */
   showCta?: boolean;
   /** Embed the working converter above the article (converter landing pages). */
-  converter?: { defaultFormat: ExportFormat };
+  converter?: { defaultFormat: ExportFormat; defaultPreset?: PresetId };
   /** "Related guides" cards shown after the article. */
   related?: RelatedLink[];
 }
@@ -88,7 +89,11 @@ export function ArticleLayout({
         </div>
         {converter ? (
           <div className={styles.tool}>
-            <ConverterApp defaultFormat={converter.defaultFormat} hero="compact" />
+            <ConverterApp
+              defaultFormat={converter.defaultFormat}
+              defaultPreset={converter.defaultPreset}
+              hero="compact"
+            />
           </div>
         ) : null}
         <article className={styles.prose}>{children}</article>

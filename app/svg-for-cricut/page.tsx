@@ -4,7 +4,7 @@ import { AdSlot } from "@/components/AdSlot";
 import { ArticleLayout } from "@/components/ArticleLayout";
 
 const description =
-  "Make SVG files for Cricut from any PNG, free in your browser. Get clean, layered cut files and import them into Cricut Design Space. No sign-up, no uploads.";
+  "Make SVG cut files for Cricut from any PNG, free in your browser. One layer per color, smooth cuts, background removed, sized to fit your mat. No sign-up, no uploads.";
 
 export const metadata: Metadata = {
   title: "Make SVG Files for Cricut from a PNG",
@@ -19,19 +19,29 @@ export const metadata: Metadata = {
 
 const faqs = [
   {
-    question: "Why should I use Clean SVG instead of the regular SVG for Cricut?",
+    question: "Which preset should I use for Cricut?",
     answer:
-      "The regular Pixel-perfect SVG includes a correction layer made of tiny rectangles that make the file match the original image pixel for pixel on screen. A cutting machine would try to cut each of those rectangles. Clean SVG leaves that layer out, so Design Space only sees the real shapes.",
+      "Use the Cricut cut file preset. It is selected automatically on this page. It reduces the design to a few flat colors, removes a solid background, smooths the outlines so the blade follows clean curves, and drops pieces too small to cut or weed. Each color is a single path, so it comes into Design Space as one layer.",
   },
   {
-    question: "Why does my design show up as several layers in Design Space?",
+    question: "Why does Design Space say my SVG is too large?",
     answer:
-      "Each color in the image becomes its own group of paths in the SVG, and Design Space shows each group as a layer. That is useful for multi-color vinyl projects. If you only want one cut, use the Black & white preset to get a single-color silhouette.",
+      "Design Space refuses SVG files with more than 5,000 paths. The Pixel-perfect preset can produce far more than that, because it keeps every shade and adds a layer of tiny correction shapes so the file matches the image on screen. A Cricut cut file has one path per color, so it always uploads.",
+  },
+  {
+    question: "What is the difference between Stacked and Sliced?",
+    answer:
+      "Stacked gives every color a solid base under the colors on top of it, so small alignment errors never leave gaps. That is the usual choice for vinyl, iron-on, and layered paper. Sliced cuts each color exactly where it appears, with no overlap, which suits Infusible Ink and single-sheet inlays.",
+  },
+  {
+    question: "What size will my design be in Design Space?",
+    answer:
+      "The SVG is written in inches, cropped to the artwork. It uses 96 pixels per inch and is capped at 11.5 inches on the longest side, so it always fits a 12 by 12 inch mat. Resize it freely in Design Space; it is a vector, so it stays sharp.",
   },
   {
     question: "Can I use the same file with a Silhouette machine?",
     answer:
-      "Silhouette Studio imports the DXF file from the same conversion. Importing SVG into Silhouette Studio requires Designer Edition or higher.",
+      "Silhouette Studio Designer Edition and higher can import the SVG. The Basic edition cannot open SVG files, but it can import the DXF file from the same conversion.",
   },
   {
     question: "Is it free to make Cricut SVG files here?",
@@ -63,13 +73,13 @@ export default function SvgForCricutPage() {
   return (
     <ArticleLayout
       title="Make SVG Files for Cricut from a PNG"
-      lede="Turn a PNG, JPG, or WebP design into a cut-ready SVG for Cricut Design Space. Convert it below, download the Clean SVG, and upload it as layered shapes."
+      lede="Turn a PNG, JPG, or WebP design into a cut-ready SVG for Cricut Design Space. The converter below starts in Cricut mode: a few flat colors, smooth outlines, no background, and one layer per color."
       crumbs={[
         { label: "Home", href: "/" },
         { label: "SVG for Cricut" },
       ]}
       jsonLd={jsonLd}
-      converter={{ defaultFormat: "svg" }}
+      converter={{ defaultFormat: "svg", defaultPreset: "cricut" }}
       showCta={false}
       related={[
         {
@@ -104,32 +114,58 @@ export default function SvgForCricutPage() {
         download has no watermark.
       </p>
 
-      <h2>Pick the right output for cutting</h2>
+      <h2>What Cricut mode does to your design</h2>
       <p>
-        Two choices make the biggest difference to how well a file cuts.
+        A file that looks perfect on screen is not always a good cut file.
+        The <strong>Cricut cut file</strong> preset, which this page selects
+        for you, prepares the design for the blade:
       </p>
-      <h3>Download the Clean SVG</h3>
+      <ul>
+        <li>
+          <strong>A few flat colors.</strong> Soft edges and slight shading
+          are merged into the main colors, so you get one mat per real color
+          instead of dozens of near-identical shades. Choose an exact number
+          of colors under the preview, or 1 color for a single silhouette.
+        </li>
+        <li>
+          <strong>No background.</strong> A solid white or colored background
+          is removed, and so are the background-colored areas inside letters,
+          so an O or an A cuts with its hole.
+        </li>
+        <li>
+          <strong>Smooth outlines.</strong> Edges are traced as curves rather
+          than pixel steps, so the blade cuts clean lines quickly.
+        </li>
+        <li>
+          <strong>Nothing too small to weed.</strong> Specks and pinholes
+          below the smallest piece setting are dropped.
+        </li>
+        <li>
+          <strong>One layer per color.</strong> Each color is a single path,
+          so Design Space shows one layer per color and keeps the pieces in
+          place. The file stays far below Design Space&apos;s 5,000-path
+          limit.
+        </li>
+        <li>
+          <strong>A real size.</strong> The file is measured in inches,
+          cropped to the artwork, and never larger than 11.5 inches, so it
+          fits a 12 by 12 inch mat.
+        </li>
+      </ul>
+
+      <h3>Stacked or Sliced layers</h3>
       <p>
-        The default Pixel-perfect preset adds a correction layer of tiny
-        rectangles so the SVG matches your image pixel for pixel on screen.
-        That is great for display, but a cutting machine would treat every one
-        of those rectangles as something to cut. Use the <strong>Clean SVG</strong>{" "}
-        download instead. It is the same design without the correction layer,
-        so Design Space only sees the real shapes.
+        <strong>Stacked</strong> (the default) gives each color a solid base
+        under the colors on top of it. That is how layered vinyl, iron-on and
+        paper projects are usually built, and small alignment errors never
+        leave gaps. <strong>Sliced</strong> cuts every color exactly where it
+        appears, with no overlap, which suits Infusible Ink and inlays.
       </p>
-      <h3>Use Black & white for single-color cuts</h3>
       <p>
-        If you are cutting one color of vinyl, a stencil, or a single sheet of
-        cardstock, choose the <strong>Black & white</strong> preset. It turns
-        the design into a single-color silhouette, so you get one clean cut
-        layer instead of several color layers you would have to merge later.
-        For multi-color projects, stay with the color result and let each
-        color become its own layer.
-      </p>
-      <p>
-        If the design has lots of tiny fragments, try the{" "}
-        <strong>Smaller file</strong> preset. It simplifies the paths, which
-        often means fewer small pieces to weed.
+        Want the exact on-screen look instead, for printing or the web? Pick
+        the <strong>Pixel-perfect</strong> preset. Those files are not meant
+        for cutting: they keep every shade and can exceed Design Space&apos;s
+        path limit.
       </p>
 
       <AdSlot name="articleInline" minHeight={280} />
@@ -138,16 +174,17 @@ export default function SvgForCricutPage() {
       <ol>
         <li>
           <strong>Convert your image.</strong> Drop your PNG, JPG, or WebP onto
-          the converter at the top of this page and pick a preset.
+          the converter at the top of this page. Cricut mode is already on.
         </li>
         <li>
           <strong>Check the result.</strong> Drag the compare slider across the
-          preview to see the traced shapes against the original. Look for thin
-          lines or small dots that may be too delicate to cut.
+          preview to see the cut shapes against the original. If two colors
+          you wanted separate were merged, raise the number of colors; if
+          there are too many mats, lower it.
         </li>
         <li>
-          <strong>Download the Clean SVG.</strong> Save it somewhere easy to
-          find, such as your desktop.
+          <strong>Download the SVG.</strong> Save it somewhere easy to find,
+          such as your desktop.
         </li>
         <li>
           <strong>Open Design Space and choose Upload.</strong> In a new or
@@ -159,32 +196,23 @@ export default function SvgForCricutPage() {
         </li>
         <li>
           <strong>Work with the layers.</strong> The design appears as a group
-          of layers, one per color. You can hide layers you do not want to cut,
-          change their colors, or delete a background layer.
+          with one layer per color. Change a layer&apos;s color to match your
+          material, or hide a layer you do not want to cut.
         </li>
       </ol>
 
       <h2>Layers become colors</h2>
       <p>
-        Every color the converter finds becomes its own group of paths in the
-        SVG, and Design Space reads each group as a separate layer. In
-        practice that means each layer can be assigned its own material
-        color, and Design Space typically lays out each color on its own mat
-        when you send the project to cut.
+        Every color in the cut file is one layer in Design Space, and each
+        layer can be assigned its own material. When you click Make It,
+        Design Space lays out each color on its own mat. Want two colors cut
+        from the same sheet? Give both layers the same color in Design Space.
       </p>
       <p>
-        A design with more colors than you plan to cut is easy to fix. Hide or
-        delete the layers you do not need, or change two layers to the same
-        color if you want them cut from the same sheet. If you end up removing
-        most of the layers, the Black & white preset might have been the
-        quicker route.
-      </p>
-      <p>
-        Combining shapes is done inside Design Space. Its welding and attaching
-        tools let you merge overlapping shapes into one outline or keep pieces
-        in position relative to each other on the mat. The converter does not
-        do this for you, and that is usually a good thing: you decide which
-        parts belong together after you see the layers.
+        Combining shapes is done inside Design Space. Weld merges overlapping
+        shapes into one outline, and Attach keeps separate pieces in position
+        on the mat. Each color in the file is already a single shape, so its
+        pieces stay where they belong without attaching them.
       </p>
 
       <h2>Sizing tips</h2>
@@ -197,8 +225,7 @@ export default function SvgForCricutPage() {
         <li>
           <strong>Start with a large, clean image.</strong> More pixels give
           the tracer more edge detail. Images larger than 1000 px on the long
-          edge are traced at 1000 px, and the SVG keeps the original display
-          size.
+          edge are traced at 1000 px.
         </li>
         <li>
           <strong>Watch small details when scaling down.</strong> A thin line
@@ -217,11 +244,13 @@ export default function SvgForCricutPage() {
         Bold shapes and flat colors work best: logos, lettering, clip art,
         line drawings, and simple illustrations. Photos are a poor fit. They
         trace into huge numbers of tiny shapes, which cut badly and take a
-        long time to weed. If you are starting from a JPG, the{" "}
-        <Link href="/jpg-to-svg">JPG to SVG guide</Link> explains how to
-        handle compression noise. Using a Silhouette machine instead? The{" "}
+        long time to weed. JPG files work too: Cricut mode merges compression
+        noise into the main colors. See the{" "}
+        <Link href="/jpg-to-svg">JPG to SVG guide</Link> for tips. Using a
+        Silhouette machine with the Basic edition of Silhouette Studio? It
+        cannot open SVG files, but the{" "}
         <Link href="/png-to-dxf">DXF export</Link> from the same conversion
-        imports into Silhouette Studio.
+        imports fine.
       </p>
 
       <h2>Cricut SVG FAQ</h2>

@@ -9,7 +9,12 @@ interface ResultDetailProps {
   /** SVG byte size, computed once by the parent. */
   svgBytes?: number;
   downloadControl?: ReactNode;
+  /** Switches the converter to the Cricut cut file preset. */
+  onUseCutPreset?: () => void;
 }
+
+/** Cricut Design Space refuses SVGs with more paths than this. */
+const CRICUT_MAX_PATHS = 5000;
 
 const LAYER_PREVIEW_COUNT = 50;
 
@@ -19,9 +24,10 @@ const EXACT_NOTES: Record<string, string> = {
   simplified:
     "This preset simplifies the shapes, so the SVG is smaller but not pixel-exact. Choose Pixel-perfect for an exact match.",
   bw: "Black & white traces a one-color silhouette, so it is not pixel-exact by design.",
+  cut: "Cut file: each color is one layer in Cricut Design Space, with smooth edges and no specks too small to cut. Colors are simplified, so it is not pixel-exact.",
 };
 
-export function ResultDetail({ result, svgBytes, downloadControl }: ResultDetailProps) {
+export function ResultDetail({ result, svgBytes, downloadControl, onUseCutPreset }: ResultDetailProps) {
   const [showAllLayers, setShowAllLayers] = useState(false);
 
   if (!result) {
@@ -43,6 +49,7 @@ export function ResultDetail({ result, svgBytes, downloadControl }: ResultDetail
       <div className="result-header">
         <h2>Result</h2>
         {exact === "exact" ? <span className="result-badge">Pixel-perfect</span> : null}
+        {exact === "cut" ? <span className="result-badge">Cut-ready</span> : null}
       </div>
       {downloadControl ? <div className="result-download">{downloadControl}</div> : null}
       <dl className="stats">
@@ -62,6 +69,20 @@ export function ResultDetail({ result, svgBytes, downloadControl }: ResultDetail
       {note ? (
         <p className="result-note" role="note">
           {note}
+          {exact === "cut" && result.metrics.backgroundRemoved
+            ? " The solid background was removed."
+            : null}
+        </p>
+      ) : null}
+      {exact !== "cut" && result.metrics.pathCount > CRICUT_MAX_PATHS ? (
+        <p className="result-note result-note-warning" role="note">
+          This SVG has {result.metrics.pathCount.toLocaleString()} paths. Cricut Design Space
+          refuses files with more than {CRICUT_MAX_PATHS.toLocaleString()}.{" "}
+          {onUseCutPreset ? (
+            <button type="button" className="result-note-action" onClick={onUseCutPreset}>
+              Make a Cricut cut file
+            </button>
+          ) : null}
         </p>
       ) : null}
       <details className="layers-disclosure">

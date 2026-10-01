@@ -2,6 +2,7 @@
 
 import { RotateCcw } from "lucide-react";
 import { PRESETS, matchPreset } from "@/lib/presets";
+import { CUT_MAX_COLORS } from "@/lib/vectorize/cutFile";
 import { DEFAULT_SETTINGS } from "@/lib/vectorize/defaultSettings";
 import type { ConversionSettings } from "@/types/vector";
 
@@ -77,7 +78,66 @@ export function SettingsPanel({ value, onChange, updating }: SettingsPanelProps)
         ))}
       </div>
 
-      <details className="settings-advanced">
+      {value.cutFile ? (
+        <div className="settings-grid settings-cut">
+          <div className="settings-field">
+            <label htmlFor="setting-cut-colors" className="settings-label">
+              Colors
+            </label>
+            <select
+              id="setting-cut-colors"
+              value={value.cutColors}
+              aria-describedby="setting-cut-colors-help"
+              onChange={(event) => set({ cutColors: Number(event.target.value) })}
+            >
+              <option value={0}>Auto (up to {CUT_MAX_COLORS})</option>
+              {Array.from({ length: CUT_MAX_COLORS }, (_, i) => i + 1).map((count) => (
+                <option key={count} value={count}>
+                  {count === 1 ? "1 color (silhouette)" : `${count} colors`}
+                </option>
+              ))}
+            </select>
+            <span id="setting-cut-colors-help" className="settings-help">
+              Each color is one layer and one mat in Design Space.
+            </span>
+          </div>
+
+          <div className="settings-field">
+            <label htmlFor="setting-cut-layering" className="settings-label">
+              Layering
+            </label>
+            <select
+              id="setting-cut-layering"
+              value={value.hierarchical}
+              aria-describedby="setting-cut-layering-help"
+              onChange={(event) =>
+                set({ hierarchical: event.target.value as ConversionSettings["hierarchical"] })
+              }
+            >
+              <option value="stacked">Stacked</option>
+              <option value="cutout">Sliced</option>
+            </select>
+            <span id="setting-cut-layering-help" className="settings-help">
+              Stacked puts each color on a solid base layer (vinyl, HTV, paper). Sliced cuts
+              pieces that don&apos;t overlap (Infusible Ink).
+            </span>
+          </div>
+
+          <SliderField
+            id="setting-cut-speck"
+            label="Smallest piece"
+            help="Pieces and holes smaller than this are dropped, so nothing is too tiny to weed."
+            value={value.filterSpeckle}
+            display={`${value.filterSpeckle}px`}
+            min={1}
+            max={16}
+            step={1}
+            onChange={(filterSpeckle) => set({ filterSpeckle })}
+          />
+        </div>
+      ) : null}
+
+      <details className="settings-advanced" hidden={value.cutFile}>
         <summary>Advanced settings</summary>
         <div className="settings-grid">
           <div className="settings-field">

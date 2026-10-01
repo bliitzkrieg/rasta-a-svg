@@ -28,7 +28,7 @@ const steps = [
   },
   {
     name: "Download your vector file",
-    text: "Choose SVG, Clean SVG, EPS, or DXF and download with one click. Converting several PNGs? They queue up, and Download all gives you a ZIP with every format.",
+    text: "Choose SVG, EPS, or DXF and download with one click. Cutting on a Cricut? Pick the Cricut cut file preset first. Converting several PNGs? They queue up, and Download all gives you a ZIP with every format.",
   },
 ];
 
@@ -132,8 +132,9 @@ export default function HowToConvertPage() {
         The SVG opens in any browser and imports into Adobe Illustrator,
         Inkscape, and CorelDRAW. It also imports into{" "}
         <Link href="/svg-for-cricut">Cricut Design Space</Link> for cutting;
-        use the Clean SVG download there so the machine does not try to cut
-        the pixel-correction rectangles. Need a different format? Every
+        choose the Cricut cut file preset first, so you get a few flat color
+        layers with smooth edges instead of every pixel shade. Need a
+        different format? Every
         conversion also exports <Link href="/png-to-eps">EPS</Link> for print
         workflows and <Link href="/png-to-dxf">DXF</Link> for laser cutters and
         CAD software.
@@ -151,10 +152,10 @@ export default function HowToConvertPage() {
           logos, icons, illustrations, and line art. Keep photos as PNG or JPG.
         </li>
         <li>
-          <strong>Sending the full SVG to a cutting machine.</strong> The
-          Pixel-perfect SVG includes thousands of tiny correction rectangles.
-          Download Clean SVG, EPS, or DXF for cutting instead, since none of
-          them include that layer.
+          <strong>Sending a Pixel-perfect SVG to a cutting machine.</strong>{" "}
+          It keeps every shade and includes thousands of tiny correction
+          rectangles, and Cricut Design Space refuses files with more than
+          5,000 paths. Use the Cricut cut file preset for cutting.
         </li>
         <li>
           <strong>Skipping the comparison.</strong> Check edges and small text

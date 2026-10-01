@@ -88,7 +88,7 @@ const FEATURES = [
   {
     icon: Scissors,
     title: "Clean files for cutting",
-    text: "Black & white mode and a clean SVG download keep cut files simple.",
+    text: "Cricut mode: a few flat colors, smooth outlines, no background, one layer per color.",
   },
 ];
 
@@ -129,7 +129,7 @@ const FAQS = [
   {
     question: "Will the SVG work in Cricut Design Space?",
     answer:
-      "Yes. Each color comes in as its own layer. For cutting, use the Black & white preset or the clean SVG download from the menu next to the Download button.",
+      "Yes. Choose the Cricut cut file preset: each color comes in as one layer with smooth outlines, the background is removed, and the file is sized in inches to fit your mat.",
   },
   {
     question: "Which formats can I download?",

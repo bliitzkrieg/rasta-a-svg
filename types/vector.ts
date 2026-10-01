@@ -32,6 +32,11 @@ export interface ConversionSettings {
   tinyMergeMaxPixelSpread: number;
   flatClusterMaxDelta: number;
   maxMergeSpread: number;
+  /** Trace a cut file for Cricut and other cutters instead of a
+   * pixel-perfect SVG (see lib/vectorize/cutFile.ts). */
+  cutFile: boolean;
+  /** Cut file colors: 0 picks automatically (up to 8). */
+  cutColors: number;
 }
 
 export interface VectorPoint {
@@ -66,8 +71,11 @@ export interface ConversionMetrics {
    *   correction layer cannot be correct.
    * - "uncorrected": no originals available to build the correction from
    *   (plain trace path without originals).
+   * - "cut": a cut file (few colors, smooth curves), never pixel-exact.
    * Undefined for results saved before v1.0.44 (treated as unknown). */
-  pixelExact?: "exact" | "capped" | "bw" | "simplified" | "uncorrected";
+  pixelExact?: "exact" | "capped" | "bw" | "simplified" | "uncorrected" | "cut";
+  /** Cut files only: a solid background color was removed. */
+  backgroundRemoved?: boolean;
   /** @deprecated Use pixelExact instead. Kept for backwards compat with
    * results saved before v1.0.44. */
   pixelPerfect?: boolean;
@@ -78,6 +86,9 @@ export interface ConversionResult {
   height: number;
   layers: VectorLayer[];
   svg: string;
+  /** Preview-only SVG framed like the source image, when `svg` is cropped
+   * (cut files are cropped to the artwork). */
+  previewSvg?: string;
   metrics: ConversionMetrics;
 }
 

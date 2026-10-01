@@ -46,17 +46,17 @@ const faqs = [
   {
     question: "What formats can I export besides SVG?",
     answer:
-      "Every conversion also produces EPS and DXF files, plus a Clean SVG option. Each export keeps the same layered structure, with one group of paths per color. The pixel-correction layer, which makes the Pixel-perfect SVG match the original pixel for pixel, is only in the regular SVG. Clean SVG, EPS, and DXF leave it out, since single-pixel rectangles are not useful for cutting or editing. On very large, detailed images such as photos, the correction layer may be skipped to keep the file size reasonable, and the app tells you when that happens.",
+      "Every conversion also produces EPS and DXF files, and Pixel-perfect results add a Clean SVG option. Each export keeps the same layered structure, with one group of paths per color. The pixel-correction layer, which makes the Pixel-perfect SVG match the original pixel for pixel, is only in the regular SVG. Clean SVG, EPS, and DXF leave it out, since single-pixel rectangles are not useful for editing. On very large, detailed images such as photos, the correction layer may be skipped to keep the file size reasonable, and the app tells you when that happens.",
   },
   {
     question: "What do the presets do?",
     answer:
-      "Pixel-perfect, the default, uses exact pixel-edge paths plus a correction layer so the SVG matches the original at its native size. Smaller file uses simplified polygon paths for a much smaller file that is not pixel-exact. Black & white produces a single-color silhouette for cut files, stencils, and vinyl. For finer control, open Advanced settings to adjust options such as color detail, speck removal, and edge style.",
+      "Pixel-perfect, the default, uses exact pixel-edge paths plus a correction layer so the SVG matches the original at its native size. Smaller file uses simplified polygon paths for a much smaller file that is not pixel-exact. Cricut cut file reduces the design to a few flat colors with smooth outlines, removes a solid background, and writes one layer per color, sized in inches. Black & white produces a smooth single-color silhouette for stencils, vinyl, and laser work. For finer control, open Advanced settings to adjust options such as color detail, speck removal, and edge style.",
   },
   {
     question: "Will the SVG work with Cricut Design Space?",
     answer:
-      "Yes. The SVG imports into Cricut Design Space with one layer per color. For cutting, use the Clean SVG download: it strips the pixel-correction layer (thousands of tiny 1px rectangles that make the preview pixel-perfect but that a cutter would try to cut). For a single-color cut, the Black & white preset gives you one silhouette. Silhouette Studio imports the DXF export; importing SVG into Silhouette Studio requires Designer Edition.",
+      "Yes. For cutting, choose the Cricut cut file preset: it merges the design into a few flat colors, removes a solid background, smooths the outlines, and writes each color as one layer, sized in inches to fit a 12 inch mat. Avoid sending a Pixel-perfect SVG to a cutter. It keeps every shade plus thousands of tiny correction shapes, and Design Space refuses files with more than 5,000 paths. Silhouette Studio Basic imports the DXF export; importing SVG into Silhouette Studio requires Designer Edition.",
   },
   {
     question: "Is there a file size limit?",
