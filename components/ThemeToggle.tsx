@@ -1,11 +1,13 @@
 "use client";
 
+import { Monitor, Moon, Sun } from "lucide-react";
 import type { ThemePreference } from "@/types/vector";
 import { AppTooltip } from "./AppTooltip";
 
 interface ThemeToggleProps {
   theme: ThemePreference;
   onThemeChange: (theme: ThemePreference) => void;
+  className?: string;
 }
 
 const ORDER: ThemePreference[] = ["light", "dark", "system"];
@@ -21,19 +23,18 @@ function label(t: ThemePreference): string {
   return "System";
 }
 
-export function ThemeToggle({ theme, onThemeChange }: ThemeToggleProps) {
+export function ThemeToggle({ theme, onThemeChange, className }: ThemeToggleProps) {
+  const text = `Theme: ${label(theme)}. Switch to ${label(nextTheme(theme))}.`;
+  const Icon = theme === "light" ? Sun : theme === "dark" ? Moon : Monitor;
   return (
-    <AppTooltip content={`Theme: ${label(theme)}. Switch to ${label(nextTheme(theme))}.`}>
+    <AppTooltip content={text}>
       <button
         type="button"
-        className="theme-toggle"
+        className={className ?? "theme-toggle"}
         onClick={() => onThemeChange(nextTheme(theme))}
-        aria-label={`Theme: ${label(theme)}. Switch to ${label(nextTheme(theme))}.`}
+        aria-label={text}
       >
-        <span className="theme-toggle-icon" aria-hidden>
-          {theme === "light" ? "☀" : theme === "dark" ? "☾" : "◐"}
-        </span>
-        <span className="theme-toggle-label">{label(theme)}</span>
+        <Icon size={18} strokeWidth={2} aria-hidden="true" />
       </button>
     </AppTooltip>
   );

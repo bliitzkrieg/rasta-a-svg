@@ -118,11 +118,10 @@ async function decodeWithBrowser(
     throw new Error("Failed to create canvas context for image decode.");
   }
   ctx.drawImage(bitmap, 0, 0);
-  const imageData = ctx.getImageData(0, 0, bitmap.width, bitmap.height);
+  // Read the size before close(): a closed ImageBitmap reports 0x0, which
+  // made every browser-decoded image (JPG, WebP, RGB+tRNS PNG) fail.
+  const { width, height } = bitmap;
+  const imageData = ctx.getImageData(0, 0, width, height);
   bitmap.close?.();
-  return {
-    width: bitmap.width,
-    height: bitmap.height,
-    pixels: imageData.data,
-  };
+  return { width, height, pixels: imageData.data };
 }

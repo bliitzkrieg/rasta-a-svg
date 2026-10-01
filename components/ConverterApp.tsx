@@ -1,52 +1,68 @@
 "use client";
 
-import { Logo } from "./Logo";
-import { type DragEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AdSlot } from "@/components/AdSlot";
+import { DownloadMenu } from "@/components/DownloadMenu";
+import { HeroDropzone } from "@/components/HeroDropzone";
 import { PreviewPane } from "@/components/PreviewPane";
 import { QueueList } from "@/components/QueueList";
 import { ResultDetail } from "@/components/ResultDetail";
 import { SettingsPanel } from "@/components/SettingsPanel";
-import { ThemeToggle } from "@/components/ThemeToggle";
 import { useConversionWorker } from "@/hooks/useConversionWorker";
-import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { usePersistedPreferences } from "@/hooks/usePersistedPreferences";
 import { usePreviewUrls } from "@/hooks/usePreviewUrls";
 import { useServiceWorkerCleanup } from "@/hooks/useServiceWorkerCleanup";
-import { useTopbarHeight } from "@/hooks/useTopbarHeight";
 import { downloadAsZip, downloadString } from "@/lib/download";
+import { ACCEPTED_IMAGE_TYPES, baseName, byteLength, formatBytes } from "@/lib/format";
 import { APP_VERSION } from "@/lib/version";
 import { trackEvent } from "@/lib/analytics";
 import { makeQueueItem, withUpdated } from "@/lib/queueUtils";
-import {
-  clearAllData,
-  deleteItemData,
-  putFileBlob,
-} from "@/lib/storage/indexedDb";
+import { clearAllData, deleteItemData, putFileBlob } from "@/lib/storage/indexedDb";
 import { defaultPersistedState } from "@/lib/storage/localState";
-import type { ConversionResult, PersistedAppState } from "@/types/vector";
+import type {
+  ConversionResult,
+  ConversionSettings,
+  ExportFormat,
+  ExportType,
+  PersistedAppState,
+} from "@/types/vector";
 import styles from "@/app/page.module.css";
 
 /** Rejects uploads above this size before decoding; decoding a huge PNG can
- * exhaust tab memory because createImageBitmap decodes the full image first. */
+ * exhaust tab memory because the full image is decoded first. */
 const MAX_SOURCE_FILE_BYTES = 25 * 1024 * 1024;
 
-export default function ConverterApp() {
-  const [appState, setAppState] = useState<PersistedAppState>(() =>
-    defaultPersistedState(),
-  );
+/** Wait this long after the last settings change before re-converting. */
+const SETTINGS_DEBOUNCE_MS = 500;
+
+const EXAMPLE_IMAGE = { url: "/examples/logo.png", fileName: "example-fox-logo.png" };
+
+interface ConverterAppProps {
+  /** Format the main download button produces (landing pages pick EPS/DXF). */
+  defaultFormat?: ExportFormat;
+  /** "home": full hero with the page <h1>. "compact": landing-page dropzone. */
+  hero?: "home" | "compact";
+}
+
+type Toast = { kind: "success" | "error"; message: string };
+
+const MIME: Record<ExportFormat, string> = {
+  svg: "image/svg+xml",
+  eps: "application/postscript",
+  dxf: "application/dxf",
+};
+
+export default function ConverterApp({ defaultFormat = "svg", hero = "home" }: ConverterAppProps) {
+  const [appState, setAppState] = useState<PersistedAppState>(() => defaultPersistedState());
   const [results, setResults] = useState<Record<string, ConversionResult>>({});
   const [activePhase, setActivePhase] = useState<string>("Idle");
-  const [exportError, setExportError] = useState<string | null>(null);
+  const [toast, setToast] = useState<Toast | null>(null);
+  const [exportBusy, setExportBusy] = useState(false);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-
-  const dragDepthRef = useRef(0);
-  const pageRef = useRef<HTMLElement | null>(null);
-  const topbarRef = useRef<HTMLElement | null>(null);
+  const [settingsPending, setSettingsPending] = useState(false);
 
   usePersistedPreferences(appState, setAppState, setResults);
-  useTopbarHeight(pageRef, topbarRef);
-  const isOffline = useOnlineStatus();
   useServiceWorkerCleanup();
 
   useEffect(() => {
@@ -57,28 +73,42 @@ export default function ConverterApp() {
     () => appState.queue.find((item) => item.id === appState.selectedId),
     [appState.queue, appState.selectedId],
   );
-  const selectedResult = appState.selectedId
-    ? results[appState.selectedId]
-    : undefined;
+  const selectedResult = appState.selectedId ? results[appState.selectedId] : undefined;
   const hasImages = appState.queue.length > 0;
+  const doneCount = appState.queue.filter((item) => item.status === "done").length;
+  const svgBytes = useMemo(
+    () => (selectedResult ? byteLength(selectedResult.svg) : undefined),
+    [selectedResult],
+  );
 
   const { originalUrl, vectorUrl } = usePreviewUrls(selectedItem, results);
   const { requestExport } = useConversionWorker(appState, setAppState, setResults, setActivePhase);
 
-  const onFiles = async (incoming: FileList | File[]) => {
-    const pngs = Array.from(incoming).filter(
-      (file) => file.type === "image/png",
-    );
-    const files = pngs.filter((file) => file.size <= MAX_SOURCE_FILE_BYTES);
-    const skippedCount = pngs.length - files.length;
-    if (skippedCount > 0) {
-      setNotice(
-        `Skipped ${skippedCount} file${skippedCount === 1 ? "" : "s"} over 25 MB. ` +
-          "Large images are downscaled to 1000 px before tracing, so shrinking them first gives the same result.",
+  const showToast = useCallback((next: Toast) => setToast(next), []);
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), toast.kind === "error" ? 8000 : 3500);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
+  const onFiles = useCallback(async (incoming: FileList | File[]) => {
+    const all = Array.from(incoming);
+    const images = all.filter((file) => ACCEPTED_IMAGE_TYPES.includes(file.type));
+    const files = images.filter((file) => file.size <= MAX_SOURCE_FILE_BYTES);
+    const unsupported = all.length - images.length;
+    const tooLarge = images.length - files.length;
+    const problems: string[] = [];
+    if (unsupported > 0) {
+      problems.push(
+        `Skipped ${unsupported} file${unsupported === 1 ? "" : "s"} that ${unsupported === 1 ? "isn't" : "aren't"} PNG, JPG or WebP.`,
       );
-    } else {
-      setNotice(null);
     }
+    if (tooLarge > 0) {
+      problems.push(
+        `Skipped ${tooLarge} file${tooLarge === 1 ? "" : "s"} over 25 MB. Images are traced at 1000 px on the long edge, so a smaller copy gives the same result.`,
+      );
+    }
+    setNotice(problems.length > 0 ? problems.join(" ") : null);
     if (files.length === 0) return;
 
     const items = files.map((file) => makeQueueItem(file));
@@ -92,41 +122,60 @@ export default function ConverterApp() {
       queue: [...current.queue, ...items],
       selectedId: current.selectedId ?? items[0].id,
     }));
-  };
+  }, []);
 
-  const dragHasFiles = (event: DragEvent<HTMLElement>) =>
-    Array.from(event.dataTransfer.types).includes("Files");
-
-  const onDragEnter = (event: DragEvent<HTMLElement>) => {
-    if (!dragHasFiles(event)) return;
-    event.preventDefault();
-    dragDepthRef.current += 1;
-    setIsDraggingFiles(true);
-  };
-
-  const onDragOver = (event: DragEvent<HTMLElement>) => {
-    if (!dragHasFiles(event)) return;
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "copy";
-    setIsDraggingFiles(true);
-  };
-
-  const onDragLeave = (event: DragEvent<HTMLElement>) => {
-    if (!dragHasFiles(event)) return;
-    event.preventDefault();
-    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
-    if (dragDepthRef.current === 0) setIsDraggingFiles(false);
-  };
-
-  const onDrop = (event: DragEvent<HTMLElement>) => {
-    if (!dragHasFiles(event)) return;
-    event.preventDefault();
-    dragDepthRef.current = 0;
-    setIsDraggingFiles(false);
-    if (event.dataTransfer.files.length > 0) {
-      void onFiles(event.dataTransfer.files);
+  const onTryExample = useCallback(async () => {
+    try {
+      const response = await fetch(EXAMPLE_IMAGE.url);
+      const blob = await response.blob();
+      trackEvent("example_loaded", { name: "fox-logo" });
+      await onFiles([new File([blob], EXAMPLE_IMAGE.fileName, { type: "image/png" })]);
+    } catch {
+      setNotice("Couldn't load the example image. Check your connection and try again.");
     }
-  };
+  }, [onFiles]);
+
+  // Drop images anywhere on the page.
+  useEffect(() => {
+    let depth = 0;
+    const hasFiles = (event: DragEvent) =>
+      Array.from(event.dataTransfer?.types ?? []).includes("Files");
+    const onEnter = (event: DragEvent) => {
+      if (!hasFiles(event)) return;
+      event.preventDefault();
+      depth += 1;
+      setIsDraggingFiles(true);
+    };
+    const onOver = (event: DragEvent) => {
+      if (!hasFiles(event)) return;
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+    };
+    const onLeave = (event: DragEvent) => {
+      if (!hasFiles(event)) return;
+      depth = Math.max(0, depth - 1);
+      if (depth === 0) setIsDraggingFiles(false);
+    };
+    const onDrop = (event: DragEvent) => {
+      if (!hasFiles(event)) return;
+      event.preventDefault();
+      depth = 0;
+      setIsDraggingFiles(false);
+      if (event.dataTransfer && event.dataTransfer.files.length > 0) {
+        void onFiles(event.dataTransfer.files);
+      }
+    };
+    window.addEventListener("dragenter", onEnter);
+    window.addEventListener("dragover", onOver);
+    window.addEventListener("dragleave", onLeave);
+    window.addEventListener("drop", onDrop);
+    return () => {
+      window.removeEventListener("dragenter", onEnter);
+      window.removeEventListener("dragover", onOver);
+      window.removeEventListener("dragleave", onLeave);
+      window.removeEventListener("drop", onDrop);
+    };
+  }, [onFiles]);
 
   const onRetry = (id: string) => {
     setAppState((current) => ({
@@ -141,17 +190,32 @@ export default function ConverterApp() {
     }));
   };
 
-  const onRegenerate = () => {
-    if (!selectedItem || selectedItem.status === "processing") return;
+  // Re-trace the selected image after settings change (debounced). If it is
+  // mid-conversion, wait for it to finish, then re-trace with the new settings.
+  const stateRef = useRef(appState);
+  stateRef.current = appState;
+  const settingsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requeueSelected = useCallback(() => {
+    const { queue, selectedId } = stateRef.current;
+    const item = queue.find((entry) => entry.id === selectedId);
+    if (!item) {
+      setSettingsPending(false);
+      return;
+    }
+    if (item.status === "processing" || item.status === "queued") {
+      settingsTimer.current = setTimeout(requeueSelected, 400);
+      return;
+    }
+    setSettingsPending(false);
     setResults((current) => {
       const next = { ...current };
-      delete next[selectedItem.id];
+      delete next[item.id];
       return next;
     });
     setAppState((current) => ({
       ...current,
-      queue: withUpdated(current.queue, selectedItem.id, (item) => ({
-        ...item,
+      queue: withUpdated(current.queue, item.id, (entry) => ({
+        ...entry,
         status: "queued",
         progress: 0,
         error: undefined,
@@ -159,7 +223,21 @@ export default function ConverterApp() {
         updatedAt: new Date().toISOString(),
       })),
     }));
+  }, []);
+
+  const onSettingsChange = (settings: ConversionSettings) => {
+    setAppState((current) => ({ ...current, settings }));
+    if (settingsTimer.current) clearTimeout(settingsTimer.current);
+    if (!stateRef.current.selectedId) return;
+    setSettingsPending(true);
+    settingsTimer.current = setTimeout(requeueSelected, SETTINGS_DEBOUNCE_MS);
   };
+  useEffect(
+    () => () => {
+      if (settingsTimer.current) clearTimeout(settingsTimer.current);
+    },
+    [],
+  );
 
   const onRemove = (id: string) => {
     void deleteItemData(id);
@@ -178,221 +256,177 @@ export default function ConverterApp() {
     });
   };
 
-  const onExport = async (type: "svg" | "svg-clean" | "eps" | "dxf") => {
+  const onExport = async (type: ExportType) => {
     if (!selectedItem || !selectedResult) return;
-    const safeName = selectedItem.fileName.replace(/\.png$/i, "");
+    const name = baseName(selectedItem.fileName);
     trackEvent("file_download", { format: type });
-    if (type === "svg") {
-      downloadString(selectedResult.svg, `${safeName}.svg`, "image/svg+xml");
+    if (type === "svg" || type === "svg-clean") {
+      const svg =
+        type === "svg"
+          ? selectedResult.svg
+          : selectedResult.svg.replace(/<g id="pixel-corrections">.*?<\/g>/s, "");
+      const fileName = type === "svg" ? `${name}.svg` : `${name}-clean.svg`;
+      downloadString(svg, fileName, MIME.svg);
+      showToast({ kind: "success", message: `Saved ${fileName} (${formatBytes(byteLength(svg))})` });
+      return;
     }
-    if (type === "eps") {
-      // Generate EPS in the worker to avoid freezing the tab on large results.
-      setActivePhase("Preparing EPS...");
-      setExportError(null);
-      try {
-        const eps = await requestExport(selectedItem.id, "eps", selectedResult);
-        downloadString(eps, `${safeName}.eps`, "application/postscript");
-      } catch (error) {
-        setExportError(
-          error instanceof Error ? error.message : "EPS export failed.",
-        );
-      } finally {
-        setActivePhase("Idle");
-      }
-    }
-    if (type === "dxf") {
-      // Generate DXF in the worker to avoid freezing the tab on large results.
-      setActivePhase("Preparing DXF...");
-      setExportError(null);
-      try {
-        const dxf = await requestExport(selectedItem.id, "dxf", selectedResult);
-        downloadString(dxf, `${safeName}.dxf`, "application/dxf");
-      } catch (error) {
-        setExportError(
-          error instanceof Error ? error.message : "DXF export failed.",
-        );
-      } finally {
-        setActivePhase("Idle");
-      }
-    }
-    if (type === "svg-clean") {
-      // Clean SVG for cutting workflows: strips the pixel-corrections group.
-      const cleanSvg = selectedResult.svg.replace(
-        /<g id="pixel-corrections">.*?<\/g>/s,
-        ""
-      );
-      downloadString(cleanSvg, `${safeName}-clean.svg`, "image/svg+xml");
+    // EPS and DXF are generated in the worker so large results don't freeze the tab.
+    setExportBusy(true);
+    try {
+      const content = await requestExport(selectedItem.id, type, selectedResult);
+      const fileName = `${name}.${type}`;
+      downloadString(content, fileName, MIME[type]);
+      showToast({ kind: "success", message: `Saved ${fileName} (${formatBytes(byteLength(content))})` });
+    } catch (error) {
+      showToast({
+        kind: "error",
+        message: `${type.toUpperCase()} export failed: ${error instanceof Error ? error.message : "unknown error"}`,
+      });
+    } finally {
+      setExportBusy(false);
     }
   };
 
-  const hasActiveProcessing = appState.queue.some(
-    (item) => item.status === "processing",
-  );
-
   const onDownloadAll = async () => {
     const entries: { path: string; content: string }[] = [];
-    setActivePhase("Preparing downloads...");
-    setExportError(null);
+    setExportBusy(true);
     try {
       for (const item of appState.queue) {
         if (item.status !== "done") continue;
         const result = results[item.id];
         if (!result) continue;
-        const base = item.fileName.replace(/\.png$/i, "");
-        entries.push({ path: `${base}.svg`, content: result.svg });
-        // Generate EPS and DXF in the worker to avoid freezing the tab.
+        const name = baseName(item.fileName);
+        entries.push({ path: `${name}.svg`, content: result.svg });
         const [eps, dxf] = await Promise.all([
           requestExport(item.id, "eps", result),
           requestExport(item.id, "dxf", result),
         ]);
-        entries.push({ path: `${base}.eps`, content: eps });
-        entries.push({ path: `${base}.dxf`, content: dxf });
+        entries.push({ path: `${name}.eps`, content: eps });
+        entries.push({ path: `${name}.dxf`, content: dxf });
       }
+      if (entries.length === 0) return;
+      trackEvent("download_all", { file_count: entries.length / 3 });
+      await downloadAsZip(entries, "png2svg-vectors.zip");
+      showToast({ kind: "success", message: `Saved ${entries.length / 3} images as a ZIP` });
     } catch (error) {
-      setExportError(
-        error instanceof Error ? error.message : "Download-all export failed.",
-      );
-      return;
+      showToast({
+        kind: "error",
+        message: `Download all failed: ${error instanceof Error ? error.message : "unknown error"}`,
+      });
     } finally {
-      setActivePhase("Idle");
+      setExportBusy(false);
     }
-    if (entries.length === 0) return;
-    trackEvent("download_all", { file_count: entries.length / 3 });
-    void downloadAsZip(entries, "processed-images.zip");
   };
 
   const onDeleteAll = () => {
     void clearAllData();
     setResults({});
-    setAppState((current) => ({
-      ...current,
-      queue: [],
-      selectedId: undefined,
-    }));
+    setAppState((current) => ({ ...current, queue: [], selectedId: undefined }));
   };
 
-  // Auto-dismiss export error toast after 8 seconds.
-  useEffect(() => {
-    if (!exportError) return;
-    const timer = setTimeout(() => setExportError(null), 8000);
-    return () => clearTimeout(timer);
-  }, [exportError]);
+  const downloadMenu = (size: "default" | "compact") => (
+    <DownloadMenu
+      primaryFormat={defaultFormat}
+      primarySize={defaultFormat === "svg" && svgBytes != null ? formatBytes(svgBytes) : undefined}
+      disabled={!selectedResult}
+      busy={exportBusy}
+      onExport={(type) => void onExport(type)}
+      onDownloadAll={doneCount > 1 ? () => void onDownloadAll() : undefined}
+      size={size}
+      placement={size === "compact" ? "top" : "bottom"}
+    />
+  );
 
   return (
-    <>
-      {exportError && (
-        <div role="alert" className={styles.exportErrorToast}>
-          <span>Export failed: {exportError}</span>
+    <section
+      className={styles.converter}
+      data-hero={hero}
+      aria-label="Image to vector converter"
+    >
+      {toast ? (
+        <div
+          role={toast.kind === "error" ? "alert" : "status"}
+          className={styles.toast}
+          data-kind={toast.kind}
+        >
+          <span>{toast.message}</span>
           <button
             type="button"
-            onClick={() => setExportError(null)}
-            aria-label="Dismiss export error"
-            className={styles.exportErrorDismiss}
+            onClick={() => setToast(null)}
+            aria-label="Dismiss notification"
+            className={styles.toastDismiss}
           >
             Dismiss
           </button>
         </div>
-      )}
-      <main
-        ref={pageRef}
-        className={styles.page}
-      data-dragging={isDraggingFiles}
-      onDragEnter={onDragEnter}
-      onDragOver={onDragOver}
-      onDragLeave={onDragLeave}
-      onDrop={onDrop}
-    >
-      <header ref={topbarRef} className={styles.topbar}>
-        <a href="/" className={styles.brandLink} aria-label="png2svg.io home">
-          <Logo className={styles.logo} />
-        </a>
-        <div className={styles.topbarControls}>
-          <div className={styles.statusRow}>
-            {isOffline ? (
-              <span className={styles.statusPill} data-offline={isOffline}>
-                Offline
-              </span>
-            ) : null}
-            <span className={styles.statusPill}>{activePhase}</span>
-          </div>
-          <div className={styles.actionRow}>
-            <ThemeToggle
-              theme={appState.theme ?? "system"}
-              onThemeChange={(theme) =>
-                setAppState((current) => ({ ...current, theme }))
-              }
-            />
-          </div>
-        </div>
-      </header>
+      ) : null}
 
-      <section className={styles.workspace} data-empty={!hasImages}>
-        <div className={styles.previewColumn}>
-          {notice ? (
-            <p className={styles.notice} role="status">
-              {notice}
-            </p>
-          ) : null}
-          <PreviewPane
-            result={selectedResult}
-            originalUrl={originalUrl}
-            vectorUrl={vectorUrl}
-            status={selectedItem?.status}
-            progress={selectedItem?.progress}
-            activePhase={
-              selectedItem?.status === "processing" ? activePhase : undefined
-            }
-            sliderPosition={appState.sliderPosition}
-            onExport={onExport}
-            onSliderPositionChange={(sliderPosition) =>
-              setAppState((current) => ({ ...current, sliderPosition }))
-            }
-            onFiles={onFiles}
-          />
-          {hasImages ? (
+      {notice ? (
+        <p className={styles.notice} role="status">
+          {notice}
+        </p>
+      ) : null}
+
+      {!hasImages ? (
+        <HeroDropzone
+          variant={hero}
+          isDragging={isDraggingFiles}
+          onFiles={(files) => void onFiles(files)}
+          onTryExample={() => void onTryExample()}
+        />
+      ) : (
+        <div className={styles.workspace}>
+          <div className={styles.previewColumn}>
+            <PreviewPane
+              result={selectedResult}
+              originalUrl={originalUrl}
+              vectorUrl={vectorUrl}
+              status={selectedItem?.status}
+              progress={selectedItem?.progress}
+              activePhase={selectedItem?.status === "processing" ? activePhase : undefined}
+              sliderPosition={appState.sliderPosition}
+              onSliderPositionChange={(sliderPosition) =>
+                setAppState((current) => ({ ...current, sliderPosition }))
+              }
+              downloadControl={selectedResult ? downloadMenu("compact") : undefined}
+            />
             <SettingsPanel
               value={appState.settings}
-              onChange={(settings) =>
-                setAppState((current) => ({ ...current, settings }))
-              }
-              onRegenerate={onRegenerate}
-              regenerateDisabled={
-                !selectedItem ||
-                selectedItem.status === "processing" ||
-                selectedItem.status === "queued"
-              }
+              onChange={onSettingsChange}
+              updating={settingsPending || selectedItem?.status === "processing"}
             />
-          ) : null}
-        </div>
+          </div>
 
-        {hasImages ? (
-          <aside className={styles.sidebar}>
+          <aside className={styles.sidebar} aria-label="Images and result">
             <QueueList
               items={appState.queue}
               selectedId={appState.selectedId}
-              onSelect={(id) =>
-                setAppState((current) => ({ ...current, selectedId: id }))
-              }
+              onSelect={(id) => setAppState((current) => ({ ...current, selectedId: id }))}
               onRetry={onRetry}
               onRemove={onRemove}
-              onFiles={onFiles}
-              onDownloadAll={onDownloadAll}
+              onFiles={(files) => void onFiles(files)}
               onDeleteAll={onDeleteAll}
-              downloadAllDisabled={hasActiveProcessing}
             />
-            <>
-              <ResultDetail result={selectedResult} onExport={onExport} />
-              {selectedItem?.error ? (
-                <p className={styles.error}>Error: {selectedItem.error}</p>
-              ) : null}
-            </>
+            <ResultDetail
+              result={selectedResult}
+              svgBytes={svgBytes}
+              downloadControl={selectedResult ? downloadMenu("default") : undefined}
+            />
+            {selectedItem?.error ? (
+              <p className={styles.error}>Error: {selectedItem.error}</p>
+            ) : null}
+            {selectedResult ? (
+              <AdSlot name="sidebarResult" minHeight={266} className={styles.sidebarAd} />
+            ) : null}
           </aside>
-        ) : null}
-      </section>
+        </div>
+      )}
+
       {isDraggingFiles ? (
-        <div className={styles.dropOverlay}>Drop PNG files anywhere</div>
+        <div className={styles.dropOverlay} aria-hidden="true">
+          Drop images anywhere
+        </div>
       ) : null}
-    </main>
-    </>
+    </section>
   );
 }

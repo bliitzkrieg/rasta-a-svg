@@ -2,20 +2,18 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Raster to Vector Lab",
-    short_name: "R2V Lab",
+    name: "PNG2SVG.IO: Free PNG to SVG Converter",
+    short_name: "PNG2SVG",
     description:
-      "Offline-capable client-side PNG to SVG, EPS, and DXF conversion app.",
+      "Convert PNG to SVG free in your browser. Pixel-perfect layered vectors for Cricut, laser cutting and print. Also exports EPS and DXF. No upload, no sign-up.",
     start_url: "/",
     display: "standalone",
-    background_color: "#f4f1ea",
-    theme_color: "#0f172a",
+    background_color: "#f6f5f3",
+    theme_color: "#2281b3",
     icons: [
-      {
-        src: "/icon.svg",
-        sizes: "any",
-        type: "image/svg+xml"
-      }
-    ]
+      { src: "/icon.svg", sizes: "any", type: "image/svg+xml" },
+      { src: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { src: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
   };
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import type { ConversionResult, QueueStatus } from "@/types/vector";
 import { CompareSlider } from "./CompareSlider";
 
@@ -12,8 +13,7 @@ interface PreviewPaneProps {
   activePhase?: string;
   sliderPosition: number;
   onSliderPositionChange: (value: number) => void;
-  onExport: (type: "svg" | "svg-clean" | "eps" | "dxf") => void;
-  onFiles?: (files: FileList | File[]) => void;
+  downloadControl?: ReactNode;
 }
 
 export function PreviewPane({
@@ -25,8 +25,7 @@ export function PreviewPane({
   activePhase,
   sliderPosition,
   onSliderPositionChange,
-  onExport,
-  onFiles,
+  downloadControl,
 }: PreviewPaneProps) {
   return (
     <div className="panel preview-stage">
@@ -38,9 +37,9 @@ export function PreviewPane({
         activePhase={activePhase}
         sliderPosition={sliderPosition}
         onSliderPositionChange={onSliderPositionChange}
-        aspectRatio={result ? result.width / result.height : undefined}
-        onExport={onExport}
-        onFiles={onFiles}
+        imageWidth={result?.width}
+        imageHeight={result?.height}
+        downloadControl={downloadControl}
       />
     </div>
   );

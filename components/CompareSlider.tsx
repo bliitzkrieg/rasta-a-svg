@@ -1,8 +1,24 @@
 "use client";
 
-import { useRef } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { ChevronsLeftRight } from "lucide-react";
 import type { QueueStatus } from "@/types/vector";
-import { ExportButtons } from "./ExportButtons";
+
+type Zoom = "fit" | 1 | 2 | 4;
+type Background = "checker" | "white" | "black";
+
+const ZOOMS: { value: Zoom; label: string }[] = [
+  { value: "fit", label: "Fit" },
+  { value: 1, label: "100%" },
+  { value: 2, label: "200%" },
+  { value: 4, label: "400%" },
+];
+
+const BACKGROUNDS: { value: Background; label: string }[] = [
+  { value: "checker", label: "Transparent" },
+  { value: "white", label: "White" },
+  { value: "black", label: "Black" },
+];
 
 interface CompareSliderProps {
   originalUrl?: string;
@@ -12,9 +28,11 @@ interface CompareSliderProps {
   activePhase?: string;
   sliderPosition: number;
   onSliderPositionChange: (value: number) => void;
-  aspectRatio?: number;
-  onExport: (type: "svg" | "svg-clean" | "eps" | "dxf") => void;
-  onFiles?: (files: FileList | File[]) => void;
+  /** Traced pixel size: what "100%" zoom means. */
+  imageWidth?: number;
+  imageHeight?: number;
+  /** Download control overlaid bottom-right of the canvas. */
+  downloadControl?: ReactNode;
 }
 
 export function CompareSlider({
@@ -25,56 +43,14 @@ export function CompareSlider({
   activePhase,
   sliderPosition,
   onSliderPositionChange,
-  aspectRatio,
-  onExport,
-  onFiles,
+  imageWidth,
+  imageHeight,
+  downloadControl,
 }: CompareSliderProps) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  if (!originalUrl) {
-    return (
-      <div className="compare-wrap compare-empty">
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/png"
-          multiple
-          hidden
-          onChange={(e) => {
-            if (e.target.files && e.target.files.length > 0) {
-              onFiles?.(e.target.files);
-              e.target.value = "";
-            }
-          }}
-        />
-        <button
-          type="button"
-          className="compare-canvas compare-canvas-empty"
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <div className="empty-state">
-            <div className="empty-stateAmbient" aria-hidden="true">
-              <span className="empty-stateGlow empty-stateGlowPrimary" />
-              <span className="empty-stateGlow empty-stateGlowSecondary" />
-              <span className="empty-stateGrid" />
-              <span className="empty-stateBeam" />
-              <span className="empty-stateOrbit empty-stateOrbitA" />
-              <span className="empty-stateOrbit empty-stateOrbitB" />
-            </div>
-            <div className="empty-stateContent">
-              <span className="empty-eyebrow">Raster in. Vector out.</span>
-              <h2>Turn PNGs into clean, layered vectors in seconds.</h2>
-              <div className="muted">
-                Drop or click to choose PNG files.
-              </div>
-              <div className="muted">
-                Images are downscaled to 1000 px on the long edge before tracing.
-              </div>
-            </div>
-          </div>
-        </button>
-      </div>
-    );
-  }
+  const aspectRatio =
+    imageWidth && imageHeight ? imageWidth / imageHeight : undefined;
+
+  if (!originalUrl) return null;
 
   if (!vectorUrl) {
     const isQueued = status === "queued";
@@ -88,11 +64,7 @@ export function CompareSlider({
           className="compare-canvas compare-canvas-pending"
           style={aspectRatio ? { aspectRatio: `${aspectRatio}` } : undefined}
         >
-          <img
-            src={originalUrl}
-            alt="Original PNG"
-            className="compare-base compare-base-pending"
-          />
+          <img src={originalUrl} alt="" className="compare-base compare-base-pending" />
           <div className="compare-pendingAmbient" aria-hidden="true">
             <span className="compare-pendingGlow compare-pendingGlowPrimary" />
             <span className="compare-pendingGlow compare-pendingGlowSecondary" />
@@ -106,26 +78,15 @@ export function CompareSlider({
             aria-live="polite"
           >
             <div className="compare-pendingHeader">
-              <span className="empty-eyebrow">
-                {isQueued ? "Queued" : "Vectorizing"}
-              </span>
+              <span className="empty-eyebrow">{isQueued ? "Queued" : "Vectorizing"}</span>
               <span className="compare-pendingPercent">{progressValue}%</span>
             </div>
-            <div className="compare-pendingOrbital" aria-hidden="true">
-              <span className="compare-pendingCore" />
-              <span className="compare-pendingOrbit compare-pendingOrbitA" />
-              <span className="compare-pendingOrbit compare-pendingOrbitB" />
-              <span className="compare-pendingOrbitDot compare-pendingOrbitDotA" />
-              <span className="compare-pendingOrbitDot compare-pendingOrbitDotB" />
-            </div>
             <div className="compare-pendingCopy">
-              <h2>
-                {isQueued ? "Your image is lined up for conversion." : "Rebuilding clean vector layers."}
-              </h2>
+              <h2>{isQueued ? "Your image is next in line." : "Tracing your image…"}</h2>
               <p className="muted">
                 {isQueued
-                  ? "The renderer is finishing earlier items first, then your live SVG preview will appear here automatically."
-                  : "We are quantizing colors, tracing regions, and shaping export-ready paths behind the scenes."}
+                  ? "Earlier images finish first. The preview appears here automatically."
+                  : "Everything runs on your device. Nothing is uploaded."}
               </p>
             </div>
             <div className="compare-pendingTrack" aria-hidden="true">
@@ -134,7 +95,7 @@ export function CompareSlider({
             <div className="compare-pendingMeta">
               <span className="compare-pendingPhase">{phaseLabel}</span>
               <span className="compare-pendingHint">
-                {isQueued ? "Auto-starts next" : "Preview updates when ready"}
+                {isQueued ? "Starts automatically" : "Preview updates when ready"}
               </span>
             </div>
           </div>
@@ -144,40 +105,202 @@ export function CompareSlider({
   }
 
   return (
+    <CompareView
+      originalUrl={originalUrl}
+      vectorUrl={vectorUrl}
+      sliderPosition={sliderPosition}
+      onSliderPositionChange={onSliderPositionChange}
+      imageWidth={imageWidth ?? 1000}
+      imageHeight={imageHeight ?? 1000}
+      downloadControl={downloadControl}
+    />
+  );
+}
+
+interface CompareViewProps {
+  originalUrl: string;
+  vectorUrl: string;
+  sliderPosition: number;
+  onSliderPositionChange: (value: number) => void;
+  imageWidth: number;
+  imageHeight: number;
+  downloadControl?: ReactNode;
+}
+
+function CompareView({
+  originalUrl,
+  vectorUrl,
+  sliderPosition,
+  onSliderPositionChange,
+  imageWidth,
+  imageHeight,
+  downloadControl,
+}: CompareViewProps) {
+  const [zoom, setZoom] = useState<Zoom>("fit");
+  const [background, setBackground] = useState<Background>("checker");
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [viewport, setViewport] = useState({ width: 0, height: 0, scrollLeft: 0 });
+  const draggingRef = useRef(false);
+
+  const zoomed = zoom !== "fit";
+  const contentWidth = zoomed ? imageWidth * zoom : 0;
+  const contentHeight = zoomed ? imageHeight * zoom : 0;
+
+  const measure = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setViewport({ width: el.clientWidth, height: el.clientHeight, scrollLeft: el.scrollLeft });
+  }, []);
+
+  useEffect(() => {
+    measure();
+    const el = scrollRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [measure]);
+
+  // Center the view when zooming in.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !zoomed) return;
+    el.scrollLeft = Math.max(0, (contentWidth - el.clientWidth) / 2);
+    el.scrollTop = Math.max(0, (contentHeight - el.clientHeight) / 2);
+    measure();
+  }, [zoom, zoomed, contentWidth, contentHeight, measure]);
+
+  const positionFromClientX = (clientX: number) => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect || rect.width === 0) return sliderPosition;
+    return Math.max(0, Math.min(100, ((clientX - rect.left) / rect.width) * 100));
+  };
+
+  // Divider position in viewport px, mapped into the zoomed content.
+  let clipRight: string;
+  if (!zoomed) {
+    clipRight = `${100 - sliderPosition}%`;
+  } else {
+    const offsetLeft = Math.max(0, (viewport.width - contentWidth) / 2);
+    const dividerInContent =
+      viewport.scrollLeft + (sliderPosition / 100) * viewport.width - offsetLeft;
+    clipRight = `${Math.max(0, Math.min(contentWidth, contentWidth - dividerInContent))}px`;
+  }
+
+  const imageStyle = zoomed
+    ? { width: contentWidth, height: contentHeight }
+    : undefined;
+
+  return (
     <div className="compare-wrap">
       <div
-        className="compare-canvas"
-        style={aspectRatio ? { aspectRatio: `${aspectRatio}` } : undefined}
+        ref={canvasRef}
+        className="compare-canvas compare-canvas-done"
+        data-zoomed={zoomed}
+        style={{ aspectRatio: `${imageWidth / imageHeight}` }}
       >
-        <div className="compare-exportFloating">
-          <ExportButtons onExport={onExport} variant="floating" />
-        </div>
-        <img src={originalUrl} alt="Original PNG" className="compare-base" />
         <div
-          className="compare-overlay"
-          style={{ clipPath: `inset(0 ${100 - sliderPosition}% 0 0)` }}
+          ref={scrollRef}
+          className={`compare-scroll compare-bg-${background}${background === "checker" ? " checkerboard" : ""}`}
+          onScroll={measure}
+          onPointerDown={(event) => {
+            if (zoomed || event.button !== 0) return;
+            draggingRef.current = true;
+            event.currentTarget.setPointerCapture(event.pointerId);
+            onSliderPositionChange(positionFromClientX(event.clientX));
+          }}
+          onPointerMove={(event) => {
+            if (!draggingRef.current) return;
+            onSliderPositionChange(positionFromClientX(event.clientX));
+          }}
+          onPointerUp={() => {
+            draggingRef.current = false;
+          }}
+          onPointerCancel={() => {
+            draggingRef.current = false;
+          }}
         >
-          <img src={vectorUrl} alt="Vector preview" />
+          <div className="compare-content" data-zoomed={zoomed}>
+            <div className="compare-stack" style={imageStyle}>
+              <img
+                src={originalUrl}
+                alt="Original image"
+                className="compare-base"
+                data-pixelated={zoomed}
+                draggable={false}
+              />
+              <div className="compare-overlay" style={{ clipPath: `inset(0 ${clipRight} 0 0)` }}>
+                <img src={vectorUrl} alt="Vector preview" draggable={false} />
+              </div>
+            </div>
+          </div>
         </div>
-        <div
-          className="compare-divider"
-          style={{ left: `${sliderPosition}%` }}
-        />
+
+        <div className="compare-divider" style={{ left: `${sliderPosition}%` }} aria-hidden="true">
+          <span
+            className="compare-handle"
+            onPointerDown={(event) => {
+              event.stopPropagation();
+              draggingRef.current = true;
+              event.currentTarget.setPointerCapture(event.pointerId);
+            }}
+            onPointerMove={(event) => {
+              if (!draggingRef.current) return;
+              onSliderPositionChange(positionFromClientX(event.clientX));
+            }}
+            onPointerUp={() => {
+              draggingRef.current = false;
+            }}
+          >
+            <ChevronsLeftRight size={18} strokeWidth={2.4} />
+          </span>
+        </div>
+
+        <span className="compare-chip compare-chip-left">Original</span>
+        <span className="compare-chip compare-chip-right">Vector</span>
+
+        <div className="compare-toolbar" role="toolbar" aria-label="Preview options">
+          <div className="compare-segment" role="group" aria-label="Zoom">
+            {ZOOMS.map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                aria-pressed={zoom === item.value}
+                onClick={() => setZoom(item.value)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+          <div className="compare-segment" role="group" aria-label="Background">
+            {BACKGROUNDS.map((item) => (
+              <button
+                key={item.value}
+                type="button"
+                aria-pressed={background === item.value}
+                aria-label={`${item.label} background`}
+                title={`${item.label} background`}
+                onClick={() => setBackground(item.value)}
+              >
+                <span className={`compare-swatch compare-swatch-${item.value}`} aria-hidden="true" />
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {downloadControl ? <div className="compare-download">{downloadControl}</div> : null}
       </div>
-      <div className="compare-meta">
-        <span>
-          <strong>PNG</strong>
-        </span>
-        <span>
-          <strong>SVG</strong>
-        </span>
-      </div>
+      <label className="sr-only" htmlFor="compare-range">
+        Comparison position: original on the left, vector on the right
+      </label>
       <input
-        aria-label="Comparison slider"
+        id="compare-range"
+        className="sr-only"
         type="range"
         min={0}
         max={100}
-        value={sliderPosition}
+        value={Math.round(sliderPosition)}
         onChange={(event) => onSliderPositionChange(Number(event.target.value))}
       />
     </div>
