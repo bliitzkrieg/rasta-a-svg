@@ -69,6 +69,14 @@ export default function ConverterApp({ defaultFormat = "svg", hero = "home" }: C
     console.log(`[PNG2SVG.IO] converter version ${APP_VERSION}`);
   }, []);
 
+  // The queue is never restored on reload, so images and results left in
+  // IndexedDB by an earlier visit are unreachable. Clear them on mount;
+  // uploads wait for this so a quick first drop is never wiped.
+  const storageReady = useRef<Promise<void> | null>(null);
+  useEffect(() => {
+    storageReady.current = clearAllData().catch(() => undefined);
+  }, []);
+
   const selectedItem = useMemo(
     () => appState.queue.find((item) => item.id === appState.selectedId),
     [appState.queue, appState.selectedId],
@@ -111,6 +119,7 @@ export default function ConverterApp({ defaultFormat = "svg", hero = "home" }: C
     setNotice(problems.length > 0 ? problems.join(" ") : null);
     if (files.length === 0) return;
 
+    await storageReady.current;
     const items = files.map((file) => makeQueueItem(file));
     for (let i = 0; i < items.length; i++) {
       await putFileBlob(items[i].id, files[i]);
@@ -127,6 +136,7 @@ export default function ConverterApp({ defaultFormat = "svg", hero = "home" }: C
   const onTryExample = useCallback(async () => {
     try {
       const response = await fetch(EXAMPLE_IMAGE.url);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const blob = await response.blob();
       trackEvent("example_loaded", { name: "fox-logo" });
       await onFiles([new File([blob], EXAMPLE_IMAGE.fileName, { type: "image/png" })]);
@@ -190,23 +200,43 @@ export default function ConverterApp({ defaultFormat = "svg", hero = "home" }: C
     }));
   };
 
-  // Re-trace the selected image after settings change (debounced). If it is
-  // mid-conversion, wait for it to finish, then re-trace with the new settings.
+  // Re-trace the selected image after settings change (debounced), but only
+  // when the settings it was traced with differ from the current ones.
   const stateRef = useRef(appState);
   stateRef.current = appState;
   const settingsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The worker reads the settings when it flips a job to "processing", so
+  // record them at that moment, once per run.
+  const settingsUsedRef = useRef<Record<string, string>>({});
+  const runningRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const settingsKey = JSON.stringify(appState.settings);
+    for (const item of appState.queue) {
+      if (item.status === "processing") {
+        if (!runningRef.current.has(item.id)) {
+          runningRef.current.add(item.id);
+          settingsUsedRef.current[item.id] = settingsKey;
+        }
+      } else {
+        runningRef.current.delete(item.id);
+      }
+    }
+  }, [appState.queue, appState.settings]);
+
   const requeueSelected = useCallback(() => {
-    const { queue, selectedId } = stateRef.current;
+    const { queue, selectedId, settings } = stateRef.current;
     const item = queue.find((entry) => entry.id === selectedId);
-    if (!item) {
+    // Not started yet: it will be traced with the current settings anyway.
+    if (!item || item.status === "queued") {
       setSettingsPending(false);
       return;
     }
-    if (item.status === "processing" || item.status === "queued") {
+    if (item.status === "processing") {
       settingsTimer.current = setTimeout(requeueSelected, 400);
       return;
     }
     setSettingsPending(false);
+    if (settingsUsedRef.current[item.id] === JSON.stringify(settings)) return;
     setResults((current) => {
       const next = { ...current };
       delete next[item.id];
@@ -415,7 +445,9 @@ export default function ConverterApp({ defaultFormat = "svg", hero = "home" }: C
             {selectedItem?.error ? (
               <p className={styles.error}>Error: {selectedItem.error}</p>
             ) : null}
-            {selectedResult ? (
+            {/* Mounted once a conversion exists and kept mounted across
+                re-traces, so settings tweaks never trigger new ad requests. */}
+            {doneCount > 0 ? (
               <AdSlot name="sidebarResult" minHeight={266} className={styles.sidebarAd} />
             ) : null}
           </aside>

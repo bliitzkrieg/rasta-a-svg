@@ -16,12 +16,11 @@
 
 .brand {
   display: inline-flex;
+  text-decoration: none;
   line-height: 0;
 }
 
 .logo {
-  width: 150px;
-  height: auto;
   color: var(--ink);
 }
 

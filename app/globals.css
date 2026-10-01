@@ -634,6 +634,13 @@ button:disabled {
   touch-action: none;
 }
 
+/* Positioning context for overlays that must not be clipped by the canvas
+   (the download menu opens upward over it). */
+.compare-frame {
+  position: relative;
+  width: 100%;
+}
+
 .compare-canvas-done {
   display: block;
   user-select: none;
@@ -1155,4 +1162,35 @@ button:disabled {
   width: 100%;
   margin: var(--space-3) 0 0;
   accent-color: var(--brand-secondary);
+}
+
+/* ---- Logo ---- */
+
+.brand-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--logo-size, 32px) * 0.3);
+  color: var(--ink);
+  line-height: 1;
+}
+
+.brand-logo-mark {
+  flex-shrink: 0;
+  display: block;
+}
+
+[data-theme="dark"] .brand-logo-tile {
+  stroke: rgb(255 255 255 / 0.16);
+  stroke-width: 1.5;
+}
+
+.brand-logo-word {
+  font-size: calc(var(--logo-size, 32px) * 0.72);
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  white-space: nowrap;
+}
+
+.brand-logo-tld {
+  color: var(--brand-secondary);
 }

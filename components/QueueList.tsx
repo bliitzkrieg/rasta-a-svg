@@ -83,14 +83,6 @@ export function QueueList({
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const thumbnails = useThumbnails(items);
 
-  const handleRowKeyDown = (event: React.KeyboardEvent, id: string) => {
-    if (event.target !== event.currentTarget) return;
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      onSelect(id);
-    }
-  };
-
   return (
     <div className={`panel ${styles.queueList}`}>
       <div className={styles.header}>
@@ -115,44 +107,35 @@ export function QueueList({
           }}
         />
       </div>
-      <ul className={styles.list} role="listbox" aria-label="Image queue">
+      <ul className={styles.list} aria-label="Image queue">
         {items.map((item) => (
-          <li
-            key={item.id}
-            role="option"
-            aria-selected={item.id === selectedId}
-            tabIndex={0}
-            data-active={item.id === selectedId}
-            className={styles.item}
-            onClick={() => onSelect(item.id)}
-            onKeyDown={(event) => handleRowKeyDown(event, item.id)}
-          >
-            <span className={`${styles.thumb} checkerboard`} aria-hidden="true">
-              {thumbnails[item.id] ? <img src={thumbnails[item.id]} alt="" /> : null}
-            </span>
-            <div className={styles.info}>
-              <strong title={item.fileName}>{item.fileName}</strong>
-              <span className={styles.metaLine}>
-                {formatBytes(item.size)} ·{" "}
-                {item.status === "done" ? (
-                  <span className={styles.done}>
-                    <CheckCircle2 size={13} strokeWidth={2.4} aria-hidden="true" /> Done
-                  </span>
-                ) : (
-                  <span data-status={item.status}>{statusText(item)}</span>
-                )}
+          <li key={item.id} className={styles.item} data-active={item.id === selectedId}>
+            <button
+              type="button"
+              className={styles.select}
+              aria-current={item.id === selectedId ? "true" : undefined}
+              onClick={() => onSelect(item.id)}
+            >
+              <span className={`${styles.thumb} checkerboard`} aria-hidden="true">
+                {thumbnails[item.id] ? <img src={thumbnails[item.id]} alt="" /> : null}
               </span>
-            </div>
+              <span className={styles.info}>
+                <strong title={item.fileName}>{item.fileName}</strong>
+                <span className={styles.metaLine}>
+                  {formatBytes(item.size)} ·{" "}
+                  {item.status === "done" ? (
+                    <span className={styles.done}>
+                      <CheckCircle2 size={13} strokeWidth={2.4} aria-hidden="true" /> Done
+                    </span>
+                  ) : (
+                    <span data-status={item.status}>{statusText(item)}</span>
+                  )}
+                </span>
+              </span>
+            </button>
             <div className={styles.rowActions}>
               {item.status === "error" ? (
-                <button
-                  type="button"
-                  className={styles.retry}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onRetry(item.id);
-                  }}
-                >
+                <button type="button" className={styles.retry} onClick={() => onRetry(item.id)}>
                   Retry
                 </button>
               ) : null}
@@ -161,10 +144,7 @@ export function QueueList({
                   type="button"
                   className={styles.remove}
                   aria-label={`Remove ${item.fileName}`}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onRemove(item.id);
-                  }}
+                  onClick={() => onRemove(item.id)}
                 >
                   <Trash2 size={16} strokeWidth={2} aria-hidden="true" />
                 </button>

@@ -17,13 +17,16 @@ export function useThemePreference(): [
   ThemePreference,
   (theme: ThemePreference) => void,
 ] {
-  const [theme, setThemeState] = useState<ThemePreference>("system");
+  // null until the stored preference is read, so the first effect run never
+  // overwrites what the <head> bootstrap script already applied.
+  const [theme, setThemeState] = useState<ThemePreference | null>(null);
 
   useEffect(() => {
     setThemeState(readThemePreference());
   }, []);
 
   useEffect(() => {
+    if (theme === null) return;
     document.documentElement.setAttribute("data-theme", resolveTheme(theme));
     if (theme !== "system") return;
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
@@ -38,5 +41,5 @@ export function useThemePreference(): [
     setThemeState(next);
   };
 
-  return [theme, setTheme];
+  return [theme ?? "system", setTheme];
 }

@@ -36,7 +36,7 @@ const faqs = [
   {
     question: "Are my images uploaded to a server?",
     answer:
-      "No. All vectorization runs locally in your browser using WebAssembly. Your images are never uploaded. They stay in your browser's local storage (IndexedDB) until you remove them, so your artwork stays private.",
+      "No. All vectorization runs locally in your browser using WebAssembly. Your images are never uploaded. They are only held in your browser's local storage while you work, so your artwork stays private.",
   },
   {
     question: "Which image formats can I convert?",

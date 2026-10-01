@@ -9,7 +9,7 @@ export function SiteFooter() {
       <div className={styles.inner}>
         <div className={styles.brandColumn}>
           <Link href="/" className={styles.brand} aria-label="png2svg.io home">
-            <Logo className={styles.logo} />
+            <Logo className={styles.logo} size={30} />
           </Link>
           <p className={styles.tagline}>
             Free, private PNG to SVG converter. Files never leave your browser.

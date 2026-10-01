@@ -138,7 +138,6 @@ function CompareView({
 }: CompareViewProps) {
   const [zoom, setZoom] = useState<Zoom>("fit");
   const [background, setBackground] = useState<Background>("checker");
-  const canvasRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [viewport, setViewport] = useState({ width: 0, height: 0, scrollLeft: 0 });
   const draggingRef = useRef(false);
@@ -171,11 +170,19 @@ function CompareView({
     measure();
   }, [zoom, zoomed, contentWidth, contentHeight, measure]);
 
+  // Measured against the scroll area's inner width (excludes scrollbars),
+  // the same width the clip math uses, so line and clip edge always agree.
   const positionFromClientX = (clientX: number) => {
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect || rect.width === 0) return sliderPosition;
-    return Math.max(0, Math.min(100, ((clientX - rect.left) / rect.width) * 100));
+    const el = scrollRef.current;
+    if (!el || el.clientWidth === 0) return sliderPosition;
+    const rect = el.getBoundingClientRect();
+    return Math.max(0, Math.min(100, ((clientX - rect.left) / el.clientWidth) * 100));
   };
+  const stopDragging = () => {
+    draggingRef.current = false;
+  };
+  const dividerLeft =
+    viewport.width > 0 ? `${(sliderPosition / 100) * viewport.width}px` : `${sliderPosition}%`;
 
   // Divider position in viewport px, mapped into the zoomed content.
   let clipRight: string;
@@ -194,67 +201,65 @@ function CompareView({
 
   return (
     <div className="compare-wrap">
-      <div
-        ref={canvasRef}
-        className="compare-canvas compare-canvas-done"
-        data-zoomed={zoomed}
-        style={{ aspectRatio: `${imageWidth / imageHeight}` }}
-      >
+      <div className="compare-frame">
         <div
-          ref={scrollRef}
-          className={`compare-scroll compare-bg-${background}${background === "checker" ? " checkerboard" : ""}`}
-          onScroll={measure}
-          onPointerDown={(event) => {
-            if (zoomed || event.button !== 0) return;
-            draggingRef.current = true;
-            event.currentTarget.setPointerCapture(event.pointerId);
-            onSliderPositionChange(positionFromClientX(event.clientX));
-          }}
-          onPointerMove={(event) => {
-            if (!draggingRef.current) return;
-            onSliderPositionChange(positionFromClientX(event.clientX));
-          }}
-          onPointerUp={() => {
-            draggingRef.current = false;
-          }}
-          onPointerCancel={() => {
-            draggingRef.current = false;
-          }}
+          className="compare-canvas compare-canvas-done"
+          data-zoomed={zoomed}
+          style={{ aspectRatio: `${imageWidth / imageHeight}` }}
         >
-          <div className="compare-content" data-zoomed={zoomed}>
-            <div className="compare-stack" style={imageStyle}>
-              <img
-                src={originalUrl}
-                alt="Original image"
-                className="compare-base"
-                data-pixelated={zoomed}
-                draggable={false}
-              />
-              <div className="compare-overlay" style={{ clipPath: `inset(0 ${clipRight} 0 0)` }}>
-                <img src={vectorUrl} alt="Vector preview" draggable={false} />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="compare-divider" style={{ left: `${sliderPosition}%` }} aria-hidden="true">
-          <span
-            className="compare-handle"
+          <div
+            ref={scrollRef}
+            className={`compare-scroll compare-bg-${background}${background === "checker" ? " checkerboard" : ""}`}
+            onScroll={measure}
             onPointerDown={(event) => {
-              event.stopPropagation();
+              if (zoomed || event.button !== 0) return;
               draggingRef.current = true;
               event.currentTarget.setPointerCapture(event.pointerId);
+              onSliderPositionChange(positionFromClientX(event.clientX));
             }}
             onPointerMove={(event) => {
               if (!draggingRef.current) return;
               onSliderPositionChange(positionFromClientX(event.clientX));
             }}
-            onPointerUp={() => {
-              draggingRef.current = false;
-            }}
+            onPointerUp={stopDragging}
+            onPointerCancel={stopDragging}
+            onLostPointerCapture={stopDragging}
           >
-            <ChevronsLeftRight size={18} strokeWidth={2.4} />
-          </span>
+            <div className="compare-content" data-zoomed={zoomed}>
+              <div className="compare-stack" style={imageStyle}>
+                <img
+                  src={originalUrl}
+                  alt="Original image"
+                  className="compare-base"
+                  data-pixelated={zoomed}
+                  draggable={false}
+                />
+                <div className="compare-overlay" style={{ clipPath: `inset(0 ${clipRight} 0 0)` }}>
+                  <img src={vectorUrl} alt="Vector preview" draggable={false} />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="compare-divider" style={{ left: dividerLeft }} aria-hidden="true">
+            <span
+              className="compare-handle"
+              onPointerDown={(event) => {
+                event.stopPropagation();
+                draggingRef.current = true;
+                event.currentTarget.setPointerCapture(event.pointerId);
+              }}
+              onPointerMove={(event) => {
+                if (!draggingRef.current) return;
+                onSliderPositionChange(positionFromClientX(event.clientX));
+              }}
+              onPointerUp={stopDragging}
+              onPointerCancel={stopDragging}
+              onLostPointerCapture={stopDragging}
+            >
+              <ChevronsLeftRight size={18} strokeWidth={2.4} />
+            </span>
+          </div>
         </div>
 
         <span className="compare-chip compare-chip-left">Original</span>

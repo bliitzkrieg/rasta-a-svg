@@ -36,7 +36,7 @@ const faqs = [
   {
     question: "Is my JPG uploaded anywhere?",
     answer:
-      "No. Conversion runs in your browser with WebAssembly. Your images stay in your browser's local storage until you remove them and are never sent to a server.",
+      "No. Conversion runs in your browser with WebAssembly. Your images are only held in your browser while you work and are never sent to a server.",
   },
 ];
 
