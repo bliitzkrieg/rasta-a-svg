@@ -1,7 +1,7 @@
 import { DEFAULT_SETTINGS } from "@/lib/vectorize/defaultSettings";
 import type { ConversionSettings } from "@/types/vector";
 
-export type PresetId = "pixel-perfect" | "smaller-file" | "black-white";
+export type PresetId = "pixel-perfect" | "smaller-file" | "cricut" | "black-white";
 
 export interface Preset {
   id: PresetId;
@@ -16,7 +16,10 @@ export interface Preset {
  *   correction layer), so the SVG matches the image exactly.
  * - Smaller file: polygon simplification and speck removal; much smaller,
  *   not pixel-exact.
- * - Black & white: single-color silhouette, the usual cut-file format.
+ * - Cricut cut file: a few flat colors, no background, smooth curves and
+ *   one layer per color, sized in inches (lib/vectorize/cutFile.ts).
+ * - Black & white: single-color silhouette with smooth edges. It is never
+ *   pixel-exact, so it skips the pixel-corner walk.
  */
 export const PRESETS: Preset[] = [
   {
@@ -32,15 +35,23 @@ export const PRESETS: Preset[] = [
     settings: { ...DEFAULT_SETTINGS, mode: "polygon", filterSpeckle: 4 },
   },
   {
+    id: "cricut",
+    label: "Cricut cut file",
+    description: "Few colors, smooth cuts, no background. One layer per color.",
+    settings: { ...DEFAULT_SETTINGS, cutFile: true, cutColors: 0, filterSpeckle: 4 },
+  },
+  {
     id: "black-white",
     label: "Black & white",
-    description: "One-color silhouette for cutting, stencils and vinyl.",
-    settings: { ...DEFAULT_SETTINGS, clusteringMode: "binary" },
+    description: "One-color silhouette for stencils, vinyl and laser.",
+    settings: { ...DEFAULT_SETTINGS, clusteringMode: "binary", exactFlatPolygons: false },
   },
 ];
 
 /** Which preset the settings match exactly, or null when customized. */
 export function matchPreset(settings: ConversionSettings): PresetId | null {
+  // The cut file keeps its own options (colors, stacking, specks).
+  if (settings.cutFile) return "cricut";
   for (const preset of PRESETS) {
     const keys = Object.keys(preset.settings) as (keyof ConversionSettings)[];
     if (keys.every((key) => settings[key] === preset.settings[key])) {

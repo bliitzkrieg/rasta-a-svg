@@ -30,7 +30,7 @@ export function usePreviewUrls(
       return;
     }
     const url = URL.createObjectURL(
-      new Blob([result.svg], { type: "image/svg+xml" }),
+      new Blob([result.previewSvg ?? result.svg], { type: "image/svg+xml" }),
     );
     setVectorUrl(url);
     return () => URL.revokeObjectURL(url);

@@ -8,6 +8,7 @@ import {
 } from "@/lib/storage/localState";
 import type {
   ConversionResult,
+  ConversionSettings,
   PersistedAppState,
 } from "@/types/vector";
 
@@ -19,6 +20,8 @@ export function usePersistedPreferences(
   state: PersistedAppState,
   setState: React.Dispatch<React.SetStateAction<PersistedAppState>>,
   setResults: React.Dispatch<React.SetStateAction<Record<string, ConversionResult>>>,
+  /** Settings to start with instead of the saved ones (landing pages). */
+  initialSettings?: ConversionSettings,
 ): boolean {
   const [hydrated, setHydrated] = useState(false);
 
@@ -26,13 +29,13 @@ export function usePersistedPreferences(
     const persisted = loadPersistedState();
     setState({
       ...defaultPersistedState(),
-      settings: persisted.settings,
+      settings: initialSettings ?? persisted.settings,
       sliderPosition: persisted.sliderPosition,
       theme: persisted.theme ?? "system",
     });
     setResults({});
     setHydrated(true);
-  }, [setState, setResults]);
+  }, [setState, setResults, initialSettings]);
 
   useEffect(() => {
     if (!hydrated) return;

@@ -20,6 +20,7 @@ function applySourceDisplaySize(
 import { toVTracerOptions } from "@/lib/vectorize/vtracerOptions";
 import { traceBinaryLayers } from "@/lib/vectorize/binaryLayers";
 import { chooseTrace, pickSmallerPath } from "@/lib/vectorize/chooseTrace";
+import { traceCutFile } from "@/lib/vectorize/cutFile";
 import { decodeBufferToImageData } from "@/lib/image/decode";
 import { toEPSLevel2 } from "@/lib/export/eps";
 import { toDXF } from "@/lib/export/dxf";
@@ -160,6 +161,50 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
         type: "progress",
         payload: { id: payload.id, phase: "Preparing trace", progress: 25 },
       });
+
+      if (payload.settings.cutFile) {
+        postMessageTyped({
+          type: "progress",
+          payload: { id: payload.id, phase: "Tracing cut layers", progress: 40 },
+        });
+        // Cut files trace the original pixels: the cut pipeline does its own
+        // color reduction, and the pixel-perfect prep would only add shades.
+        const cut = traceCutFile(
+          (w, h, px, opts) => vtracer.trace_rgba_to_json(w, h, px, opts),
+          decoded.originalPixels,
+          decoded.width,
+          decoded.height,
+          payload.settings,
+          decoded.sourceWidth,
+          decoded.sourceHeight,
+        );
+        if (cut.layers.length === 0) {
+          throw new Error(
+            "Nothing to cut: after removing the background no shapes were left. Try an image with clear artwork, or more colors.",
+          );
+        }
+        postMessageTyped({
+          type: "result",
+          payload: {
+            id: payload.id,
+            result: {
+              width: decoded.width,
+              height: decoded.height,
+              layers: cut.layers,
+              svg: cut.svg,
+              previewSvg: cut.previewSvg,
+              metrics: {
+                nodeCount: cut.nodeCount,
+                pathCount: cut.pathCount,
+                elapsedMs: Math.round(performance.now() - startedAt),
+                pixelExact: "cut",
+                backgroundRemoved: cut.backgroundRemoved,
+              },
+            },
+          },
+        });
+        return;
+      }
 
       const options = toVTracerOptions(payload.settings);
 

@@ -182,15 +182,17 @@ export default function ImageToSvgPage() {
         around every shape. With the default Pixel-perfect preset, those edge
         pixels are reproduced by a separate correction layer of tiny
         rectangles, so the SVG matches the original at its native size. If
-        you plan to cut the design or edit the paths, the Clean SVG download
-        leaves that layer out.
+        you plan to edit the paths, the Clean SVG download leaves that layer
+        out. To cut the design, use the Cricut cut file preset, which snaps
+        soft edges to clean outlines.
       </p>
       <p>
         JPG cannot store transparency, so a JPG logo always sits on a solid
         background, usually white. That background is traced like any other
         color and ends up as its own layer, since each color in the output is
         grouped separately. You can delete it in a vector editor such as
-        Inkscape or Adobe Illustrator.
+        Inkscape or Adobe Illustrator. The Cricut cut file preset removes a
+        solid background for you.
       </p>
 
       <h2>Which images vectorize well</h2>

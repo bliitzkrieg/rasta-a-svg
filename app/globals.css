@@ -190,8 +190,18 @@ button:disabled {
 
 .preset-group {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.5rem;
+}
+
+@media (max-width: 1180px) {
+  .preset-group {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.settings-cut {
+  margin-top: 0.9rem;
 }
 
 .preset-option {
@@ -879,6 +889,22 @@ button:disabled {
   color: var(--ink-muted);
   font-size: 0.8rem;
   line-height: 1.5;
+}
+
+.result-note-warning {
+  background: color-mix(in srgb, var(--brand-secondary) 12%, var(--panel));
+  color: var(--ink);
+}
+
+.result-note-action {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--brand-secondary-strong);
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 .layers-disclosure {
