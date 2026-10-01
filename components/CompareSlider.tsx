@@ -227,15 +227,16 @@ function CompareView({
           >
             <div className="compare-content" data-zoomed={zoomed}>
               <div className="compare-stack" style={imageStyle}>
-                <img
-                  src={originalUrl}
-                  alt="Original image"
-                  className="compare-base"
-                  data-pixelated={zoomed}
-                  draggable={false}
-                />
+                {/* The vector is the static base so it is rasterized once;
+                    dragging only re-clips the cheap original on top. */}
+                <img src={vectorUrl} alt="Vector preview" className="compare-base" draggable={false} />
                 <div className="compare-overlay" style={{ clipPath: `inset(0 ${clipRight} 0 0)` }}>
-                  <img src={vectorUrl} alt="Vector preview" draggable={false} />
+                  <img
+                    src={originalUrl}
+                    alt="Original image"
+                    data-pixelated={zoomed}
+                    draggable={false}
+                  />
                 </div>
               </div>
             </div>

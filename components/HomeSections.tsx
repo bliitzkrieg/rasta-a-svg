@@ -36,8 +36,8 @@ const GALLERY = [
     title: "Illustration",
     description: "Layered landscape with eight colors and sharp diagonals.",
     alt: "Flat mountain landscape illustration",
-    width: 800,
-    height: 600,
+    width: 640,
+    height: 640,
   },
 ];
 
@@ -153,7 +153,7 @@ export function HomeSections() {
             See the difference
           </h2>
           <p className={styles.lede}>
-            Drag each slider. The right side is the SVG this converter produced,
+            Drag across each image. The right side is the SVG this converter produced,
             layered and pixel-exact.
           </p>
         </header>

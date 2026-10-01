@@ -113,24 +113,24 @@ function HeroDemo() {
     <figure className={styles.demo}>
       <div className={`${styles.demoCanvas} checkerboard`}>
         {/* Decorative demo images: explicit sizes avoid layout shift. */}
+        {/* The heavy SVG is the static base layer; only the cheap PNG on
+            top is clipped by the animation, so the SVG is painted once. */}
+        <img
+          src="/examples/hero-logo.svg"
+          alt="The same fox logo converted to a layered SVG"
+          width={480}
+          height={480}
+          className={`${styles.demoImage} ${styles.demoVector}`}
+          loading="eager"
+        />
         <img
           src="/examples/hero-logo.png"
           alt="A fox logo as the original PNG"
           width={480}
           height={480}
-          className={styles.demoImage}
+          className={`${styles.demoImage} ${styles.demoRaster}`}
           loading="eager"
         />
-        <div className={styles.demoVector} aria-hidden="true">
-          <img
-            src="/examples/hero-logo.svg"
-            alt=""
-            width={480}
-            height={480}
-            className={styles.demoImage}
-            loading="eager"
-          />
-        </div>
         <span className={styles.demoDivider} aria-hidden="true" />
         <span className={`${styles.demoChip} ${styles.demoChipLeft}`}>PNG</span>
         <span className={`${styles.demoChip} ${styles.demoChipRight}`}>SVG</span>
