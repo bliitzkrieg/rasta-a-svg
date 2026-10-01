@@ -50,7 +50,7 @@ const structuredData = {
         "Batch conversion",
         "Runs locally in the browser",
       ],
-      screenshot: `${SITE_URL}/og-image.png`,
+      screenshot: `${SITE_URL}/og-image.png?v=2`,
       description: siteDescription,
       publisher: { "@id": `${SITE_URL}/#organization` },
     },
@@ -116,10 +116,10 @@ export const metadata: Metadata = {
     locale: "en_US",
     images: [
       {
-        url: "/og-image.png",
+        url: "/og-image.png?v=2",
         width: 1200,
         height: 630,
-        alt: "PNG2SVG.IO: free PNG to SVG converter",
+        alt: "PNG2SVG.IO: a zoomed-in fox logo, blocky PNG pixels on one side and the smooth converted SVG on the other",
       },
     ],
   },
@@ -128,7 +128,7 @@ export const metadata: Metadata = {
     title: "Free PNG to SVG Converter: Pixel-Perfect, No Upload",
     description: siteDescription,
     creator: "@bliitzkrieg",
-    images: ["/og-image.png"],
+    images: ["/og-image.png?v=2"],
   },
   category: "design tools",
   other: {
