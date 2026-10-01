@@ -603,6 +603,11 @@ button:disabled {
   overflow: hidden;
 }
 
+/* Keep the vector on its own layer so re-clipping the overlay never repaints it. */
+.compare-stack > .compare-base {
+  transform: translateZ(0);
+}
+
 .compare-divider {
   position: absolute;
   top: 0;
@@ -696,7 +701,7 @@ button:disabled {
   flex-shrink: 0;
 }
 
-.compare-base[data-pixelated="true"] {
+.compare-overlay img[data-pixelated="true"] {
   image-rendering: pixelated;
 }
 
@@ -1109,10 +1114,15 @@ button:disabled {
 /* ---- Homepage gallery mini compare ---- */
 
 .mini-compare-canvas {
+  /* Same frame for every card; images are contained inside it. */
+  aspect-ratio: 1 / 1;
   position: relative;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
+  cursor: ew-resize;
+  touch-action: pan-y;
+  user-select: none;
 }
 
 .mini-compare-canvas img {
@@ -1121,21 +1131,43 @@ button:disabled {
   width: 100%;
   height: 100%;
   object-fit: contain;
+  pointer-events: none;
 }
 
-.mini-compare-vector {
-  position: absolute;
-  inset: 0;
+/* Keep the SVG on its own layer so clipping the PNG above never repaints it. */
+.mini-compare-svg {
+  transform: translateZ(0);
+}
+
+.mini-compare-png {
+  clip-path: inset(0 calc(100% - var(--pos, 50%)) 0 0);
 }
 
 .mini-compare-divider {
   position: absolute;
   top: 0;
   bottom: 0;
+  left: var(--pos, 50%);
   width: 2px;
   margin-left: -1px;
   background: var(--brand-secondary);
   pointer-events: none;
+}
+
+.mini-compare-handle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin: -14px 0 0 -14px;
+  border: 2px solid var(--brand-secondary);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--brand-secondary-strong);
+  box-shadow: var(--shadow-md);
 }
 
 .mini-compare-chip {
@@ -1148,6 +1180,7 @@ button:disabled {
   font-size: 0.66rem;
   font-weight: 800;
   letter-spacing: 0.06em;
+  pointer-events: none;
 }
 
 .mini-compare-chip-left {
@@ -1158,10 +1191,9 @@ button:disabled {
   right: 8px;
 }
 
-.mini-compare-range {
-  width: 100%;
-  margin: var(--space-3) 0 0;
-  accent-color: var(--brand-secondary);
+.mini-compare-canvas:has(+ label + input:focus-visible) {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 2px;
 }
 
 /* ---- Logo ---- */

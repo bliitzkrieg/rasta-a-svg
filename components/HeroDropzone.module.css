@@ -185,10 +185,13 @@
   padding: 6%;
 }
 
+/* Own compositing layer: clipping the PNG above never repaints the SVG. */
 .demoVector {
-  position: absolute;
-  inset: 0;
-  clip-path: inset(0 0 0 50%);
+  transform: translateZ(0);
+}
+
+.demoRaster {
+  clip-path: inset(0 50% 0 0);
 }
 
 .demoDivider {
@@ -230,7 +233,7 @@
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .demoVector {
+  .demoRaster {
     animation: heroReveal 6s ease-in-out infinite;
   }
 
@@ -242,10 +245,10 @@
 @keyframes heroReveal {
   0%,
   100% {
-    clip-path: inset(0 0 0 30%);
+    clip-path: inset(0 70% 0 0);
   }
   50% {
-    clip-path: inset(0 0 0 70%);
+    clip-path: inset(0 30% 0 0);
   }
 }
 
