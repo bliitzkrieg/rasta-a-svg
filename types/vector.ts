@@ -96,6 +96,12 @@ export interface ImageQueueItem {
 
 export type ThemePreference = "light" | "dark" | "system";
 
+/** File formats a conversion can be downloaded as. */
+export type ExportFormat = "svg" | "eps" | "dxf";
+
+/** Every download action: the formats plus the SVG without pixel corrections. */
+export type ExportType = ExportFormat | "svg-clean";
+
 export interface PersistedAppState {
   queue: ImageQueueItem[];
   selectedId?: string;

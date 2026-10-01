@@ -1,71 +1,94 @@
 "use client";
 
+import { useState, type ReactNode } from "react";
+import { formatBytes } from "@/lib/format";
 import type { ConversionResult } from "@/types/vector";
-import { ExportButtons } from "./ExportButtons";
 
 interface ResultDetailProps {
   result?: ConversionResult;
-  onExport: (type: "svg" | "svg-clean" | "eps" | "dxf") => void;
+  /** SVG byte size, computed once by the parent. */
+  svgBytes?: number;
+  downloadControl?: ReactNode;
 }
 
-export function ResultDetail({ result, onExport }: ResultDetailProps) {
+const LAYER_PREVIEW_COUNT = 50;
+
+const EXACT_NOTES: Record<string, string> = {
+  capped:
+    "This image is large and detailed, so the pixel-correction layer was skipped to keep the file size reasonable. The SVG is very close but not pixel-exact.",
+  simplified:
+    "This preset simplifies the shapes, so the SVG is smaller but not pixel-exact. Choose Pixel-perfect for an exact match.",
+  bw: "Black & white traces a one-color silhouette, so it is not pixel-exact by design.",
+};
+
+export function ResultDetail({ result, svgBytes, downloadControl }: ResultDetailProps) {
+  const [showAllLayers, setShowAllLayers] = useState(false);
+
+  if (!result) {
+    return (
+      <div className="panel result-panel">
+        <h2>Result</h2>
+        <p className="muted">Your vector appears here when the conversion finishes.</p>
+      </div>
+    );
+  }
+
+  const exact = result.metrics.pixelExact;
+  const note = exact ? EXACT_NOTES[exact] : undefined;
+  const layers = showAllLayers ? result.layers : result.layers.slice(0, LAYER_PREVIEW_COUNT);
+  const seconds = (result.metrics.elapsedMs / 1000).toFixed(1);
+
   return (
     <div className="panel result-panel">
       <div className="result-header">
         <h2>Result</h2>
-        <ExportButtons disabled={!result} onExport={onExport} />
+        {exact === "exact" ? <span className="result-badge">Pixel-perfect</span> : null}
       </div>
-      {result ? (
-        <div className="result-stack">
-          {result.metrics.pixelExact === "capped" && (
-            <p className="muted" role="note">
-              Note: this is a large, detailed image, so the pixel-correction
-              layer was skipped to keep the file size reasonable. The SVG is
-              very close but not pixel-exact.
-            </p>
-          )}
-          {result.metrics.pixelExact === "simplified" && (
-            <p className="muted" role="note">
-              Note: Polygon curve fitting simplifies the paths, so the SVG is
-              not pixel-exact. Use Spline for the most accurate result.
-            </p>
-          )}
-          {result.metrics.pixelExact === "bw" && (
-            <p className="muted" role="note">
-              Note: B/W mode traces a black-and-white silhouette, so the SVG
-              is not pixel-exact by design.
-            </p>
-          )}
-          <div className="stats">
-            <div className="statCard">
-              <span className="statValue">{result.metrics.nodeCount}</span>
-              <span className="statLabel">Nodes</span>
-            </div>
-            <div className="statCard">
-              <span className="statValue">{result.metrics.pathCount}</span>
-              <span className="statLabel">Paths</span>
-            </div>
-            <div className="statCard">
-              <span className="statValue">{result.metrics.elapsedMs} ms</span>
-              <span className="statLabel">Processing</span>
-            </div>
-          </div>
-          <div className="layers">
-            {result.layers.map((layer) => (
-              <div key={layer.name} className="layer-row">
-                <span
-                  className="swatch"
-                  style={{ backgroundColor: layer.color }}
-                />
-                <span>{layer.name}</span>
-                <span>{layer.paths.length} paths</span>
-              </div>
-            ))}
-          </div>
+      {downloadControl ? <div className="result-download">{downloadControl}</div> : null}
+      <dl className="stats">
+        <div className="statCard">
+          <dt className="statLabel">Colors</dt>
+          <dd className="statValue">{result.layers.length.toLocaleString()}</dd>
         </div>
-      ) : (
-        <p className="muted">Convert an image to see stats, layers, and export options.</p>
-      )}
+        <div className="statCard">
+          <dt className="statLabel">File size</dt>
+          <dd className="statValue">{svgBytes != null ? formatBytes(svgBytes) : "–"}</dd>
+        </div>
+        <div className="statCard">
+          <dt className="statLabel">Converted in</dt>
+          <dd className="statValue">{seconds} s</dd>
+        </div>
+      </dl>
+      {note ? (
+        <p className="result-note" role="note">
+          {note}
+        </p>
+      ) : null}
+      <details className="layers-disclosure">
+        <summary>Color layers ({result.layers.length.toLocaleString()})</summary>
+        <p className="layers-meta">
+          {result.metrics.pathCount.toLocaleString()} paths ·{" "}
+          {result.metrics.nodeCount.toLocaleString()} nodes
+        </p>
+        <ul className="layers">
+          {layers.map((layer, index) => (
+            <li key={`${layer.name}-${index}`} className="layer-row">
+              <span className="swatch" style={{ backgroundColor: layer.color }} />
+              <span className="layer-hex">{layer.color.toUpperCase()}</span>
+              <span>
+                {layer.paths.length === 1
+                  ? "1 path"
+                  : `${layer.paths.length.toLocaleString()} paths`}
+              </span>
+            </li>
+          ))}
+        </ul>
+        {!showAllLayers && result.layers.length > LAYER_PREVIEW_COUNT ? (
+          <button type="button" className="layers-more" onClick={() => setShowAllLayers(true)}>
+            Show all {result.layers.length.toLocaleString()}
+          </button>
+        ) : null}
+      </details>
     </div>
   );
 }

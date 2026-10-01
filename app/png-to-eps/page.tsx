@@ -1,24 +1,32 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { AdSlot } from "@/components/AdSlot";
 import { ArticleLayout } from "@/components/ArticleLayout";
 
+const description =
+  "Convert PNG to EPS free in your browser. Vectorize PNG images into scalable EPS files for print and design. No sign-up, no watermarks, nothing uploaded.";
+
 export const metadata: Metadata = {
-  title: "Free PNG to EPS Converter | PNG2SVG.IO",
-  description:
-    "Convert PNG to EPS free in your browser. Vectorize PNG images into scalable EPS files for print and design. No sign-up, no watermarks, files never leave your device.",
+  title: "Free PNG to EPS Converter",
+  description,
   alternates: { canonical: "/png-to-eps" },
+  openGraph: {
+    title: "Free PNG to EPS Converter",
+    description,
+    url: "https://png2svg.io/png-to-eps",
+  },
 };
 
 const faqs = [
   {
     question: "Is converting PNG to EPS free?",
     answer:
-      "Yes. PNG to EPS conversion on PNG2SVG.IO is completely free, with no watermarks and no sign-up required.",
+      "Yes. PNG to EPS conversion on PNG2SVG.IO is free, with no watermarks and no sign-up required. The site is supported by ads.",
   },
   {
     question: "Will the EPS file work with Adobe Illustrator?",
     answer:
-      "Yes. The EPS export contains standard vector paths that open in Adobe Illustrator, InDesign, Photoshop, CorelDRAW, and other design software.",
+      "Yes. The EPS export contains standard vector paths that import into Adobe Illustrator, CorelDRAW, Inkscape, and other vector design software.",
   },
   {
     question: "What is the difference between EPS and SVG?",
@@ -38,8 +46,7 @@ const jsonLd = [
     "@type": "WebPage",
     name: "Free PNG to EPS Converter",
     url: "https://png2svg.io/png-to-eps",
-    description:
-      "Convert PNG to EPS free in your browser. Vectorize PNG images into scalable EPS files for print and design.",
+    description,
   },
   {
     "@context": "https://schema.org",
@@ -62,6 +69,25 @@ export default function PngToEpsPage() {
         { label: "PNG to EPS" },
       ]}
       jsonLd={jsonLd}
+      converter={{ defaultFormat: "eps" }}
+      showCta={false}
+      related={[
+        {
+          href: "/logo-to-vector",
+          title: "Convert your logo to a vector",
+          description: "Get SVG and EPS versions of a logo that printers will accept.",
+        },
+        {
+          href: "/png-to-dxf",
+          title: "PNG to DXF converter",
+          description: "DXF files for laser cutters, CNC machines, and CAD software.",
+        },
+        {
+          href: "/guides/png-vs-svg",
+          title: "PNG vs SVG",
+          description: "Raster pixels versus vector paths, and when to use each.",
+        },
+      ]}
     >
       <h2>What is an EPS file?</h2>
       <p>
@@ -79,7 +105,9 @@ export default function PngToEpsPage() {
       <ul>
         <li>
           <strong>Print shops and prepress.</strong> Many printers still ask
-          for EPS or PDF vectors for logos and artwork.
+          for EPS or PDF vectors for logos and artwork. Our guide to{" "}
+          <Link href="/logo-to-vector">converting a logo to a vector</Link>{" "}
+          covers what to send.
         </li>
         <li>
           <strong>Stock vector sites.</strong> Marketplaces that sell vector
@@ -95,21 +123,26 @@ export default function PngToEpsPage() {
         <Link href="/">SVG is usually the better pick</Link>. For print, EPS is
         still king.
       </p>
+
+      <AdSlot name="articleInline" minHeight={280} />
+
       <h2>How to convert PNG to EPS</h2>
       <ol>
         <li>
-          <strong>Drop your PNG onto the converter.</strong> Open{" "}
-          <Link href="/">png2svg.io</Link> and drag your PNG anywhere onto the
-          page. Tracing starts automatically.
+          <strong>Drop your PNG onto the converter.</strong> The converter is
+          right at the top of this page. Drag your PNG onto it or pick a file.
+          JPG and WebP work too. Tracing starts automatically.
         </li>
         <li>
-          <strong>Tune the vector settings.</strong> Raise the color count for
-          detailed artwork or lower it for clean, simple shapes. Flat colors
-          and sharp edges trace best.
+          <strong>Keep the Pixel-perfect preset for print.</strong> It is the
+          default and traces exact pixel edges, so the shapes match your
+          original artwork. Drag the compare slider over the preview to check
+          edges against the PNG.
         </li>
         <li>
           <strong>Download the EPS.</strong> When tracing finishes, choose the
-          EPS export. You get the SVG and DXF versions too, from the same
+          EPS export. You get the SVG and{" "}
+          <Link href="/png-to-dxf">DXF</Link> versions too, from the same
           conversion.
         </li>
       </ol>
@@ -124,8 +157,14 @@ export default function PngToEpsPage() {
           than photographs.
         </li>
         <li>
-          If edges look jagged, increase the color count slightly or raise the
-          detail setting and convert again. Every run is free.
+          The EPS export never includes the pixel-correction layer that the
+          Pixel-perfect SVG uses, so it contains only the traced shapes, one
+          group per color.
+        </li>
+        <li>
+          If the EPS is heavier than you need, try the Smaller file preset. It
+          uses simplified paths and produces a much smaller file, at the cost
+          of exact pixel matching. Every run is free.
         </li>
       </ul>
       <h2>PNG to EPS FAQ</h2>

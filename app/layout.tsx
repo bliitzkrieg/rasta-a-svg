@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Manrope } from "next/font/google";
 import Script from "next/script";
+import { ADSENSE_CLIENT } from "@/lib/ads";
+import { THEME_BOOTSTRAP_SCRIPT } from "@/lib/theme";
 import "./globals.css";
 
 const manrope = Manrope({
@@ -9,55 +11,74 @@ const manrope = Manrope({
   variable: "--font-manrope",
 });
 
-const siteDescription =
-  "Free online PNG to SVG converter: turn PNG images into clean layered SVG, EPS and DXF vectors right in your browser. No uploads, no sign-up, no watermarks.";
+const SITE_URL = "https://png2svg.io";
 
-const webAppJsonLd = {
+const siteDescription =
+  "Convert PNG to SVG free in your browser. Pixel-perfect layered vectors for Cricut, laser cutting and print. Also exports EPS and DXF. No upload, no sign-up.";
+
+const structuredData = {
   "@context": "https://schema.org",
-  "@type": "WebApplication",
-  name: "PNG2SVG.IO",
-  url: "https://png2svg.io",
-  applicationCategory: "DesignApplication",
-  operatingSystem: "Web",
-  offers: {
-    "@type": "Offer",
-    price: "0",
-    priceCurrency: "USD",
-  },
-  description: siteDescription,
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": `${SITE_URL}/#organization`,
+      name: "PNG2SVG.IO",
+      url: SITE_URL,
+      logo: `${SITE_URL}/icon.svg`,
+    },
+    {
+      "@type": "WebSite",
+      "@id": `${SITE_URL}/#website`,
+      name: "PNG2SVG.IO",
+      url: SITE_URL,
+      publisher: { "@id": `${SITE_URL}/#organization` },
+    },
+    {
+      "@type": "WebApplication",
+      name: "PNG2SVG.IO",
+      url: SITE_URL,
+      applicationCategory: "DesignApplication",
+      operatingSystem: "Web",
+      browserRequirements: "Requires JavaScript and WebAssembly",
+      isAccessibleForFree: true,
+      offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+      featureList: [
+        "PNG to SVG",
+        "PNG to EPS",
+        "PNG to DXF",
+        "JPG and WebP input",
+        "Batch conversion",
+        "Runs locally in the browser",
+      ],
+      screenshot: `${SITE_URL}/og-image.png`,
+      description: siteDescription,
+      publisher: { "@id": `${SITE_URL}/#organization` },
+    },
+  ],
 };
 
+// EEA, UK and Switzerland: deny ad/analytics storage until the visitor
+// answers the consent message (Google's CMP, enabled in the AdSense
+// dashboard, updates these). Everywhere else the defaults stay granted.
+const CONSENT_REGIONS = [
+  "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR",
+  "HU", "IS", "IE", "IT", "LV", "LI", "LT", "LU", "MT", "NL", "NO", "PL",
+  "PT", "RO", "SK", "SI", "ES", "SE", "GB", "CH",
+];
+
+const GA_INIT = `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('consent','default',{ad_storage:'denied',ad_user_data:'denied',ad_personalization:'denied',analytics_storage:'denied',region:${JSON.stringify(CONSENT_REGIONS)}});gtag('js',new Date());gtag('config','G-KN4F0R7K5F');`;
+
 export const metadata: Metadata = {
-  metadataBase: new URL("https://png2svg.io"),
+  metadataBase: new URL(SITE_URL),
   title: {
-    default: "Free PNG to SVG Converter | PNG2SVG.IO",
+    default: "Free PNG to SVG Converter: Pixel-Perfect, No Upload | PNG2SVG.IO",
     template: "%s | PNG2SVG.IO",
   },
   description: siteDescription,
   applicationName: "PNG2SVG.IO",
-  keywords: [
-    "png to svg",
-    "png to svg converter",
-    "convert png to vector",
-    "svg converter",
-    "eps export",
-    "dxf export",
-    "vector converter",
-    "image to vector",
-    "svg for cricut",
-    "client-side converter",
-  ],
-  authors: [
-    {
-      name: "Bliitzkrieg",
-      url: "https://github.com/bliitzkrieg",
-    },
-  ],
+  authors: [{ name: "Bliitzkrieg", url: "https://github.com/bliitzkrieg" }],
   creator: "Bliitzkrieg",
   publisher: "PNG2SVG.IO",
-  alternates: {
-    canonical: "/",
-  },
   robots: {
     index: true,
     follow: true,
@@ -79,9 +100,9 @@ export const metadata: Metadata = {
   },
   openGraph: {
     type: "website",
-    url: "https://png2svg.io",
+    url: SITE_URL,
     siteName: "PNG2SVG.IO",
-    title: "Free PNG to SVG Converter | PNG2SVG.IO",
+    title: "Free PNG to SVG Converter: Pixel-Perfect, No Upload",
     description: siteDescription,
     locale: "en_US",
     images: [
@@ -95,19 +116,19 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Free PNG to SVG Converter | PNG2SVG.IO",
+    title: "Free PNG to SVG Converter: Pixel-Perfect, No Upload",
     description: siteDescription,
     creator: "@bliitzkrieg",
     images: ["/og-image.png"],
   },
   category: "design tools",
   other: {
-    "google-adsense-account": "ca-pub-1821039974714849",
+    "google-adsense-account": ADSENSE_CLIENT,
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#2281B3",
+  themeColor: "#2281b3",
 };
 
 export default function RootLayout({
@@ -117,22 +138,34 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* Apply the saved theme before first paint (no flash). */}
+        <script
+          dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_SCRIPT }}
+          suppressHydrationWarning
+        />
+      </head>
       <body className={`${manrope.className} ${manrope.variable}`}>
-        <Script
-          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1821039974714849"
-          strategy="afterInteractive"
+        {/* React 19 hoists async scripts into <head> as a resource. A plain
+            tag keeps AdSense happy (it rejects next/script's data-nscript). */}
+        <script
+          async
+          src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${ADSENSE_CLIENT}`}
           crossOrigin="anonymous"
         />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+        />
+        <a href="#main-content" className="skip-link">
+          Skip to content
+        </a>
+        <Script id="ga4-init" strategy="afterInteractive">
+          {GA_INIT}
+        </Script>
         <Script
           src="https://www.googletagmanager.com/gtag/js?id=G-KN4F0R7K5F"
           strategy="afterInteractive"
-        />
-        <Script id="ga4-init" strategy="afterInteractive">
-          {`window.dataLayer = window.dataLayer || [];function gtag(){dataLayer.push(arguments);}gtag('js', new Date());gtag('config', 'G-KN4F0R7K5F');`}
-        </Script>
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(webAppJsonLd) }}
         />
         {children}
       </body>

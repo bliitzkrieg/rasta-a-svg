@@ -13,7 +13,7 @@ import type {
 
 /**
  * Hydrates app state from localStorage (preferences only; queue/selection are reset)
- * and persists state changes. Also syncs theme to document.
+ * and persists state changes. The theme is handled by useThemePreference.
  */
 export function usePersistedPreferences(
   state: PersistedAppState,
@@ -38,28 +38,6 @@ export function usePersistedPreferences(
     if (!hydrated) return;
     savePersistedState(state);
   }, [state, hydrated]);
-
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-    const preference = state.theme ?? "system";
-    const resolved =
-      preference === "system"
-        ? window.matchMedia("(prefers-color-scheme: dark)").matches
-          ? "dark"
-          : "light"
-        : preference;
-    document.documentElement.setAttribute("data-theme", resolved);
-    if (preference !== "system") return;
-    const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    const listener = () => {
-      document.documentElement.setAttribute(
-        "data-theme",
-        mq.matches ? "dark" : "light",
-      );
-    };
-    mq.addEventListener("change", listener);
-    return () => mq.removeEventListener("change", listener);
-  }, [state.theme]);
 
   return hydrated;
 }

@@ -1,211 +1,207 @@
 "use client";
 
 import { RotateCcw } from "lucide-react";
+import { PRESETS, matchPreset } from "@/lib/presets";
+import { DEFAULT_SETTINGS } from "@/lib/vectorize/defaultSettings";
 import type { ConversionSettings } from "@/types/vector";
 
 interface SettingsPanelProps {
   value: ConversionSettings;
   onChange: (next: ConversionSettings) => void;
-  onRegenerate: () => void;
-  regenerateDisabled?: boolean;
+  /** True while the selected image is being re-traced with new settings. */
+  updating?: boolean;
 }
 
-export function SettingsPanel({
-  value,
-  onChange,
-  onRegenerate,
-  regenerateDisabled,
-}: SettingsPanelProps) {
-  const showColorControls = value.clusteringMode === "color";
-  const showCurveControls = value.mode === "spline";
+interface SliderFieldProps {
+  id: string;
+  label: string;
+  help: string;
+  value: number;
+  display: string;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (value: number) => void;
+}
+
+function SliderField({ id, label, help, value, display, min, max, step, onChange }: SliderFieldProps) {
+  return (
+    <div className="settings-field">
+      <label htmlFor={id} className="settings-label">
+        {label} <span className="settings-value">{display}</span>
+      </label>
+      <input
+        id={id}
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        aria-describedby={`${id}-help`}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
+      <span id={`${id}-help`} className="settings-help">
+        {help}
+      </span>
+    </div>
+  );
+}
+
+export function SettingsPanel({ value, onChange, updating }: SettingsPanelProps) {
+  const activePreset = matchPreset(value);
+  const isColor = value.clusteringMode === "color";
+  const set = (patch: Partial<ConversionSettings>) => onChange({ ...value, ...patch });
 
   return (
     <div className="panel settings">
       <div className="settings-header">
-        <h2>Vector Settings</h2>
-        <button
-          type="button"
-          className="settings-regenerate"
-          disabled={regenerateDisabled}
-          onClick={onRegenerate}
-        >
-          <RotateCcw size={15} strokeWidth={2.1} />
-          Regenerate
-        </button>
+        <h2>Settings</h2>
+        <span className="settings-status" aria-live="polite">
+          {updating ? "Updating preview…" : activePreset ? "" : "Custom settings"}
+        </span>
       </div>
-      <div className="settings-grid">
-        <label>
-          Clustering
-          <select
-            value={value.clusteringMode}
-            onChange={(event) =>
-              onChange({
-                ...value,
-                clusteringMode:
-                  event.target.value as ConversionSettings["clusteringMode"],
-              })
-            }
+
+      <div className="preset-group" role="radiogroup" aria-label="Preset">
+        {PRESETS.map((preset) => (
+          <button
+            key={preset.id}
+            type="button"
+            role="radio"
+            aria-checked={activePreset === preset.id}
+            className="preset-option"
+            onClick={() => onChange(preset.settings)}
           >
-            <option value="color">Color</option>
-            <option value="binary">B/W</option>
-          </select>
-        </label>
-        <label>
-          Hierarchical
-          <select
-            value={value.hierarchical}
-            disabled={!showColorControls}
-            onChange={(event) =>
-              onChange({
-                ...value,
-                hierarchical:
-                  event.target.value as ConversionSettings["hierarchical"],
-              })
-            }
-          >
-            <option value="stacked">Stacked</option>
-            <option value="cutout">Cutout</option>
-          </select>
-        </label>
-        <label className="settings-sliderField">
-          Filter Speckle ({value.filterSpeckle})
-          <input
-            type="range"
+            <span className="preset-label">{preset.label}</span>
+            <span className="preset-description">{preset.description}</span>
+          </button>
+        ))}
+      </div>
+
+      <details className="settings-advanced">
+        <summary>Advanced settings</summary>
+        <div className="settings-grid">
+          <div className="settings-field">
+            <label htmlFor="setting-color-mode" className="settings-label">
+              Color mode
+            </label>
+            <select
+              id="setting-color-mode"
+              value={value.clusteringMode}
+              aria-describedby="setting-color-mode-help"
+              onChange={(event) =>
+                set({ clusteringMode: event.target.value as ConversionSettings["clusteringMode"] })
+              }
+            >
+              <option value="color">Full color</option>
+              <option value="binary">Black &amp; white</option>
+            </select>
+            <span id="setting-color-mode-help" className="settings-help">
+              Full color keeps every color. Black &amp; white makes a one-color cut file.
+            </span>
+          </div>
+
+          <div className="settings-field">
+            <label htmlFor="setting-stacking" className="settings-label">
+              Shape stacking
+            </label>
+            <select
+              id="setting-stacking"
+              value={value.hierarchical}
+              disabled={!isColor}
+              aria-describedby="setting-stacking-help"
+              onChange={(event) =>
+                set({ hierarchical: event.target.value as ConversionSettings["hierarchical"] })
+              }
+            >
+              <option value="stacked">Stacked</option>
+              <option value="cutout">Cutout</option>
+            </select>
+            <span id="setting-stacking-help" className="settings-help">
+              Stacked layers shapes on top of each other. Cutout cuts holes so shapes don&apos;t overlap.
+            </span>
+          </div>
+
+          <div className="settings-field">
+            <label htmlFor="setting-edge" className="settings-label">
+              Edge style
+            </label>
+            <select
+              id="setting-edge"
+              value={value.mode}
+              aria-describedby="setting-edge-help"
+              onChange={(event) => set({ mode: event.target.value as ConversionSettings["mode"] })}
+            >
+              <option value="spline">Exact (default)</option>
+              <option value="polygon">Simplified</option>
+              <option value="none">Pixel</option>
+            </select>
+            <span id="setting-edge-help" className="settings-help">
+              Simplified uses fewer points for a smaller file, but isn&apos;t pixel-exact.
+            </span>
+          </div>
+
+          <SliderField
+            id="setting-speck"
+            label="Remove specks smaller than"
+            help="Drops tiny spots. 1 keeps every pixel."
+            value={value.filterSpeckle}
+            display={`${value.filterSpeckle}px`}
             min={0}
             max={16}
             step={1}
-            value={value.filterSpeckle}
-            onChange={(event) =>
-              onChange({
-                ...value,
-                filterSpeckle: Number(event.target.value),
-              })
-            }
+            onChange={(filterSpeckle) => set({ filterSpeckle })}
           />
-        </label>
-        {showColorControls ? (
-          <label className="settings-sliderField">
-            Color Precision ({value.colorPrecision})
-            <input
-              type="range"
+
+          {isColor ? (
+            <SliderField
+              id="setting-color-detail"
+              label="Color detail"
+              help="Higher keeps more distinct colors."
+              value={value.colorPrecision}
+              display={String(value.colorPrecision)}
               min={1}
               max={8}
               step={1}
-              value={value.colorPrecision}
-              onChange={(event) =>
-                onChange({
-                  ...value,
-                  colorPrecision: Number(event.target.value),
-                })
-              }
+              onChange={(colorPrecision) => set({ colorPrecision })}
             />
-          </label>
-        ) : null}
-        {showColorControls ? (
-          <label className="settings-sliderField">
-            Gradient Step ({value.layerDifference})
-            <input
-              type="range"
+          ) : null}
+
+          {isColor ? (
+            <SliderField
+              id="setting-merge"
+              label="Color merge threshold"
+              help="Higher merges similar shades into one layer."
+              value={value.layerDifference}
+              display={String(value.layerDifference)}
               min={0}
               max={255}
               step={1}
-              value={value.layerDifference}
-              onChange={(event) =>
-                onChange({
-                  ...value,
-                  layerDifference: Number(event.target.value),
-                })
-              }
+              onChange={(layerDifference) => set({ layerDifference })}
             />
-          </label>
-        ) : null}
-        <label>
-          Curve Fitting
-          <select
-            value={value.mode}
-            onChange={(event) =>
-              onChange({
-                ...value,
-                mode: event.target.value as ConversionSettings["mode"],
-              })
-            }
-          >
-            <option value="spline">Spline</option>
-            <option value="polygon">Polygon</option>
-            <option value="none">Pixel</option>
-          </select>
-        </label>
-        {showCurveControls ? (
-          <label className="settings-sliderField">
-            Corner Threshold ({value.cornerThreshold}deg)
-            <input
-              type="range"
-              min={0}
-              max={180}
-              step={1}
-              value={value.cornerThreshold}
-              onChange={(event) =>
-                onChange({
-                  ...value,
-                  cornerThreshold: Number(event.target.value),
-                })
-              }
-            />
-          </label>
-        ) : null}
-        {showCurveControls ? (
-          <label className="settings-sliderField">
-            Segment Length ({value.lengthThreshold.toFixed(1)})
-            <input
-              type="range"
-              min={3.5}
-              max={40}
-              step={0.5}
-              value={value.lengthThreshold}
-              onChange={(event) =>
-                onChange({
-                  ...value,
-                  lengthThreshold: Number(event.target.value),
-                })
-              }
-            />
-          </label>
-        ) : null}
-        {showCurveControls ? (
-          <label className="settings-sliderField">
-            Splice Threshold ({value.spliceThreshold}deg)
-            <input
-              type="range"
-              min={0}
-              max={180}
-              step={1}
-              value={value.spliceThreshold}
-              onChange={(event) =>
-                onChange({
-                  ...value,
-                  spliceThreshold: Number(event.target.value),
-                })
-              }
-            />
-          </label>
-        ) : null}
-        <label className="settings-sliderField">
-          Path Precision ({value.pathPrecision})
-          <input
-            type="range"
+          ) : null}
+
+          <SliderField
+            id="setting-precision"
+            label="Decimal places"
+            help="Coordinate precision in the file. Lower is smaller."
+            value={value.pathPrecision}
+            display={String(value.pathPrecision)}
             min={0}
             max={16}
             step={1}
-            value={value.pathPrecision}
-            onChange={(event) =>
-              onChange({
-                ...value,
-                pathPrecision: Number(event.target.value),
-              })
-            }
+            onChange={(pathPrecision) => set({ pathPrecision })}
           />
-        </label>
-      </div>
+        </div>
+        <button
+          type="button"
+          className="settings-reset"
+          onClick={() => onChange(DEFAULT_SETTINGS)}
+          disabled={activePreset === "pixel-perfect"}
+        >
+          <RotateCcw size={14} strokeWidth={2.2} aria-hidden="true" />
+          Reset to defaults
+        </button>
+      </details>
     </div>
   );
 }

@@ -1,8 +1,10 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
-import { CheckCircle2, Download, ImagePlus, Trash2 } from "lucide-react";
+import { CheckCircle2, Plus, Trash2 } from "lucide-react";
+import { getFileBlob } from "@/lib/storage/indexedDb";
+import { ACCEPT_ATTRIBUTE, formatBytes } from "@/lib/format";
 import type { ImageQueueItem } from "@/types/vector";
 import { AppTooltip } from "./AppTooltip";
 import styles from "./QueueList.module.css";
@@ -14,9 +16,7 @@ interface QueueListProps {
   onRetry: (id: string) => void;
   onRemove: (id: string) => void;
   onFiles: (files: FileList | File[]) => void;
-  onDownloadAll: () => void;
   onDeleteAll: () => void;
-  downloadAllDisabled: boolean;
 }
 
 function statusText(item: ImageQueueItem): string {
@@ -27,17 +27,47 @@ function statusText(item: ImageQueueItem): string {
   return "Queued";
 }
 
-function StatusBadge({ item }: { item: ImageQueueItem }) {
-  if (item.status === "done") {
-    return (
-      <AppTooltip content="Done">
-        <span className={styles.statusIcon} aria-label="Done">
-          <CheckCircle2 size={16} strokeWidth={2.25} />
-        </span>
-      </AppTooltip>
-    );
-  }
-  return <span>{statusText(item)}</span>;
+/** Object URLs for each queued file's thumbnail, revoked when items leave. */
+function useThumbnails(items: ImageQueueItem[]): Record<string, string> {
+  const [urls, setUrls] = useState<Record<string, string>>({});
+  const urlsRef = useRef<Record<string, string>>({});
+
+  const idsKey = items.map((item) => item.id).join("|");
+  useEffect(() => {
+    const ids = new Set(idsKey ? idsKey.split("|") : []);
+    let cancelled = false;
+    // Revoke thumbnails of removed items.
+    for (const [id, url] of Object.entries(urlsRef.current)) {
+      if (!ids.has(id)) {
+        URL.revokeObjectURL(url);
+        delete urlsRef.current[id];
+      }
+    }
+    const missing = [...ids].filter((id) => !urlsRef.current[id]);
+    void Promise.all(
+      missing.map(async (id) => {
+        const blob = await getFileBlob(id);
+        if (cancelled || !blob) return;
+        urlsRef.current[id] = URL.createObjectURL(blob);
+      }),
+    ).then(() => {
+      if (!cancelled) setUrls({ ...urlsRef.current });
+    });
+    setUrls({ ...urlsRef.current });
+    return () => {
+      cancelled = true;
+    };
+  }, [idsKey]);
+
+  useEffect(
+    () => () => {
+      for (const url of Object.values(urlsRef.current)) URL.revokeObjectURL(url);
+      urlsRef.current = {};
+    },
+    [],
+  );
+
+  return urls;
 }
 
 export function QueueList({
@@ -47,16 +77,14 @@ export function QueueList({
   onRetry,
   onRemove,
   onFiles,
-  onDownloadAll,
   onDeleteAll,
-  downloadAllDisabled,
 }: QueueListProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const hasProcessedImages = items.some((i) => i.status === "done");
-  const downloadDisabled = downloadAllDisabled || !hasProcessedImages;
+  const thumbnails = useThumbnails(items);
 
   const handleRowKeyDown = (event: React.KeyboardEvent, id: string) => {
+    if (event.target !== event.currentTarget) return;
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
       onSelect(id);
@@ -66,32 +94,27 @@ export function QueueList({
   return (
     <div className={`panel ${styles.queueList}`}>
       <div className={styles.header}>
-        <h2>Images</h2>
+        <h2>Images ({items.length})</h2>
         <button
           type="button"
           className={styles.addButton}
           onClick={() => inputRef.current?.click()}
         >
-          <ImagePlus size={16} strokeWidth={2.1} />
-          Choose PNG files
+          <Plus size={16} strokeWidth={2.4} aria-hidden="true" />
+          Add images
         </button>
         <input
           ref={inputRef}
           type="file"
-          accept="image/png"
+          accept={ACCEPT_ATTRIBUTE}
           multiple
           hidden
           onChange={(event) => {
             if (event.target.files) onFiles(event.target.files);
+            event.target.value = "";
           }}
         />
       </div>
-      {items.length === 0 ? (
-        <div className={styles.empty}>
-          <p>Drag PNG files anywhere on the page, or choose files to get started.</p>
-          <span className="muted">Your uploaded images will appear here.</span>
-        </div>
-      ) : null}
       <ul className={styles.list} role="listbox" aria-label="Image queue">
         {items.map((item) => (
           <li
@@ -102,17 +125,29 @@ export function QueueList({
             data-active={item.id === selectedId}
             className={styles.item}
             onClick={() => onSelect(item.id)}
-            onKeyDown={(e) => handleRowKeyDown(e, item.id)}
+            onKeyDown={(event) => handleRowKeyDown(event, item.id)}
           >
-            <div>
-              <strong>{item.fileName}</strong>
-              <p className="muted">{Math.round(item.size / 1024)} KB</p>
+            <span className={`${styles.thumb} checkerboard`} aria-hidden="true">
+              {thumbnails[item.id] ? <img src={thumbnails[item.id]} alt="" /> : null}
+            </span>
+            <div className={styles.info}>
+              <strong title={item.fileName}>{item.fileName}</strong>
+              <span className={styles.metaLine}>
+                {formatBytes(item.size)} ·{" "}
+                {item.status === "done" ? (
+                  <span className={styles.done}>
+                    <CheckCircle2 size={13} strokeWidth={2.4} aria-hidden="true" /> Done
+                  </span>
+                ) : (
+                  <span data-status={item.status}>{statusText(item)}</span>
+                )}
+              </span>
             </div>
-            <div className={styles.meta}>
-              <StatusBadge item={item} />
+            <div className={styles.rowActions}>
               {item.status === "error" ? (
                 <button
                   type="button"
+                  className={styles.retry}
                   onClick={(event) => {
                     event.stopPropagation();
                     onRetry(item.id);
@@ -121,56 +156,40 @@ export function QueueList({
                   Retry
                 </button>
               ) : null}
-              <button
-                type="button"
-                className="danger"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onRemove(item.id);
-                }}
-              >
-                Remove
-              </button>
+              <AppTooltip content="Remove">
+                <button
+                  type="button"
+                  className={styles.remove}
+                  aria-label={`Remove ${item.fileName}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onRemove(item.id);
+                  }}
+                >
+                  <Trash2 size={16} strokeWidth={2} aria-hidden="true" />
+                </button>
+              </AppTooltip>
             </div>
           </li>
         ))}
       </ul>
-      {items.length > 0 ? (
+      {items.length > 1 ? (
         <div className={styles.footer}>
-          <button
-            type="button"
-            className={styles.footerButton}
-            disabled={downloadDisabled}
-            onClick={onDownloadAll}
-            title={
-              downloadAllDisabled
-                ? "Wait for processing to finish"
-                : "Download all processed images as a zip"
-            }
-          >
-            <Download size={14} strokeWidth={2.1} />
-            Download all
-          </button>
           <AlertDialog.Root open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
             <AlertDialog.Trigger asChild>
-              <button
-                type="button"
-                className={`${styles.footerButton} danger`}
-                title="Remove all images"
-              >
-                <Trash2 size={14} strokeWidth={2.1} />
-                Delete all
+              <button type="button" className={styles.deleteAll}>
+                Remove all images
               </button>
             </AlertDialog.Trigger>
             <AlertDialog.Portal>
               <AlertDialog.Overlay className={styles.dialogOverlay} />
               <AlertDialog.Content className={styles.dialogContent}>
                 <AlertDialog.Title className={styles.dialogTitle}>
-                  Delete all images?
+                  Remove all images?
                 </AlertDialog.Title>
                 <AlertDialog.Description className={styles.dialogDescription}>
-                  This will remove all images from the queue and clear their results. This
-                  cannot be undone.
+                  This clears every image and result from this page. Your
+                  original files on your device are not affected.
                 </AlertDialog.Description>
                 <div className={styles.dialogActions}>
                   <AlertDialog.Cancel asChild>
@@ -187,7 +206,7 @@ export function QueueList({
                         setDeleteDialogOpen(false);
                       }}
                     >
-                      Delete all
+                      Remove all
                     </button>
                   </AlertDialog.Action>
                 </div>

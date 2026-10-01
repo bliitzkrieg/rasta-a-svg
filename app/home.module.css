@@ -1,0 +1,27 @@
+.home {
+  width: 100%;
+}
+
+.tool {
+  width: 100%;
+  max-width: var(--container);
+  margin: 0 auto;
+  padding: var(--space-6) var(--gutter) 0;
+}
+
+.adBand {
+  width: 100%;
+  max-width: var(--container);
+  margin: var(--space-10) auto 0;
+  padding: 0 var(--gutter);
+}
+
+.adBand:empty {
+  display: none;
+}
+
+@media (max-width: 720px) {
+  .tool {
+    padding-top: var(--space-4);
+  }
+}

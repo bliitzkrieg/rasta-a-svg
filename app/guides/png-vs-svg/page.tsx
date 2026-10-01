@@ -1,12 +1,20 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { AdSlot } from "@/components/AdSlot";
 import { ArticleLayout } from "@/components/ArticleLayout";
 
+const description =
+  "PNG vs SVG explained: raster pixels versus vector paths, when to use each format, how transparency and file size compare, and how to convert a PNG to SVG.";
+
 export const metadata: Metadata = {
-  title: "PNG vs SVG: What Is the Difference? | PNG2SVG.IO",
-  description:
-    "PNG vs SVG explained: raster pixels versus vector paths, when to use each format, and how to convert a PNG to SVG for infinite scaling.",
+  title: "PNG vs SVG: What Is the Difference?",
+  description,
   alternates: { canonical: "/guides/png-vs-svg" },
+  openGraph: {
+    title: "PNG vs SVG: What Is the Difference?",
+    description,
+    url: "https://png2svg.io/guides/png-vs-svg",
+  },
 };
 
 const jsonLd = {
@@ -14,8 +22,7 @@ const jsonLd = {
   "@type": "WebPage",
   name: "PNG vs SVG: What Is the Difference?",
   url: "https://png2svg.io/guides/png-vs-svg",
-  description:
-    "PNG vs SVG explained: raster pixels versus vector paths, when to use each format, and how to convert a PNG to SVG for infinite scaling.",
+  description,
 };
 
 export default function PngVsSvgPage() {
@@ -25,10 +32,27 @@ export default function PngVsSvgPage() {
       lede="PNG and SVG solve opposite problems. PNG stores pixels, which makes it great for photos. SVG stores math, which makes it infinitely scalable. Here is when to use each."
       crumbs={[
         { label: "Home", href: "/" },
-        { label: "Guides", href: "/guides/how-to-convert-png-to-svg" },
+        { label: "Guides", href: "/guides" },
         { label: "PNG vs SVG" },
       ]}
       jsonLd={jsonLd}
+      related={[
+        {
+          href: "/guides/what-is-vectorization",
+          title: "What is vectorization?",
+          description: "How a converter turns PNG pixels into SVG paths.",
+        },
+        {
+          href: "/guides/how-to-convert-png-to-svg",
+          title: "How to convert PNG to SVG",
+          description: "Three steps from a PNG to a scalable vector file.",
+        },
+        {
+          href: "/logo-to-vector",
+          title: "Convert your logo to a vector",
+          description: "Turn a PNG logo into SVG and EPS files for print.",
+        },
+      ]}
     >
       <h2>What is PNG?</h2>
       <p>
@@ -47,6 +71,9 @@ export default function PngVsSvgPage() {
         means it renders perfectly sharp at any size, from a 16 pixel favicon
         to a billboard, and the file stays small for simple artwork.
       </p>
+
+      <AdSlot name="articleInline" minHeight={280} />
+
       <h2>PNG vs SVG at a glance</h2>
       <table>
         <thead>
@@ -99,8 +126,9 @@ export default function PngVsSvgPage() {
       <h2>When to use SVG</h2>
       <p>
         Convert to SVG when the artwork has defined shapes: logos, icons,
-        typography, illustrations, diagrams, and anything destined for a
-        cutting machine, laser cutter, or large format print. SVG is also the
+        typography, illustrations, diagrams, and anything destined for a{" "}
+        <Link href="/svg-for-cricut">cutting machine</Link>, laser cutter, or
+        large format print. SVG is also the
         right format for web graphics that must stay crisp on retina and 4K
         displays.
       </p>

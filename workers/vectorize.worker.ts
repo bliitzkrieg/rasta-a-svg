@@ -325,8 +325,14 @@ self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
         },
       });
     } catch (error) {
+      // The WASM tracer throws plain strings (wasm-bindgen JsValue), so
+      // surface those too instead of a generic message.
       const messageText =
-        error instanceof Error ? error.message : "Conversion failed";
+        error instanceof Error
+          ? error.message
+          : typeof error === "string" && error
+            ? error
+            : "Conversion failed";
 
       postMessageTyped({
         type: "error",

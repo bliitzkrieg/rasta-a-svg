@@ -1,29 +1,37 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { AdSlot } from "@/components/AdSlot";
 import { ArticleLayout } from "@/components/ArticleLayout";
 
+const description =
+  "Convert PNG to DXF free in your browser. Turn PNG images into DXF vector files for laser cutters, CNC machines, and CAD software. No sign-up, no watermarks.";
+
 export const metadata: Metadata = {
-  title: "Free PNG to DXF Converter | PNG2SVG.IO",
-  description:
-    "Convert PNG to DXF free in your browser. Turn PNG images into DXF vector files for laser cutters, CNC machines, and CAD software. No sign-up, no watermarks.",
+  title: "Free PNG to DXF Converter",
+  description,
   alternates: { canonical: "/png-to-dxf" },
+  openGraph: {
+    title: "Free PNG to DXF Converter",
+    description,
+    url: "https://png2svg.io/png-to-dxf",
+  },
 };
 
 const faqs = [
   {
     question: "Is converting PNG to DXF free?",
     answer:
-      "Yes. PNG to DXF conversion on PNG2SVG.IO is completely free, with no watermarks and no sign-up required.",
+      "Yes. PNG to DXF conversion on PNG2SVG.IO is free, with no watermarks and no sign-up required. The site is supported by ads.",
   },
   {
     question: "Will the DXF work with my laser cutter or CNC software?",
     answer:
-      "The DXF export contains the same layered vector paths as the SVG export, in the widely supported DXF format used by CAD, laser, and CNC software. Most programs import it directly, but always run a test cut with new software.",
+      "The DXF export contains the same layered vector paths as the SVG export, in the widely supported DXF format. It imports into CAD programs such as AutoCAD and LibreCAD and into laser software such as LightBurn. Always run a test cut with new software.",
   },
   {
     question: "Can I use the DXF file with Silhouette Studio?",
     answer:
-      "Yes. Silhouette Studio Designer Edition and above can import DXF files, which makes this converter a free way to prepare PNG artwork for your Silhouette cutting machine.",
+      "Yes. Silhouette Studio imports DXF files, which makes this converter a free way to prepare PNG artwork for your Silhouette cutting machine. Importing SVG into Silhouette Studio requires Designer Edition, but DXF does not.",
   },
   {
     question: "Are my files uploaded to a server during conversion?",
@@ -38,8 +46,7 @@ const jsonLd = [
     "@type": "WebPage",
     name: "Free PNG to DXF Converter",
     url: "https://png2svg.io/png-to-dxf",
-    description:
-      "Convert PNG to DXF free in your browser. Turn PNG images into DXF vector files for laser cutters, CNC machines, and CAD software.",
+    description,
   },
   {
     "@context": "https://schema.org",
@@ -62,6 +69,25 @@ export default function PngToDxfPage() {
         { label: "PNG to DXF" },
       ]}
       jsonLd={jsonLd}
+      converter={{ defaultFormat: "dxf" }}
+      showCta={false}
+      related={[
+        {
+          href: "/svg-for-cricut",
+          title: "Make SVG files for Cricut",
+          description: "Layered cut files from a PNG, ready for Cricut Design Space.",
+        },
+        {
+          href: "/png-to-eps",
+          title: "PNG to EPS converter",
+          description: "EPS files for print shops and professional design software.",
+        },
+        {
+          href: "/guides/what-is-vectorization",
+          title: "What is vectorization?",
+          description: "How tracing turns pixels into the paths your machine follows.",
+        },
+      ]}
     >
       <h2>What is a DXF file?</h2>
       <p>
@@ -74,38 +100,47 @@ export default function PngToDxfPage() {
       <h2>When to use DXF instead of SVG</h2>
       <ul>
         <li>
-          <strong>Laser cutting and engraving.</strong> Most laser software
-          imports DXF toolpaths directly.
+          <strong>Laser cutting and engraving.</strong> Most laser software,
+          including LightBurn, imports DXF directly.
         </li>
         <li>
           <strong>CNC routing and milling.</strong> CAM programs that generate
           cutting paths from artwork expect DXF input.
         </li>
         <li>
-          <strong>CAD workflows.</strong> AutoCAD, DraftSight, LibreCAD, and
-          similar tools open DXF natively.
+          <strong>CAD workflows.</strong> AutoCAD, LibreCAD, and similar tools
+          open DXF natively.
         </li>
         <li>
           <strong>Silhouette cutting machines.</strong> Silhouette Studio
-          (Designer Edition and up) imports DXF files for cutting.
+          imports DXF files for cutting, without needing Designer Edition.
         </li>
       </ul>
+      <p>
+        Cutting on a Cricut instead? Design Space works with SVG. See{" "}
+        <Link href="/svg-for-cricut">making SVG files for Cricut</Link>.
+      </p>
+
+      <AdSlot name="articleInline" minHeight={280} />
+
       <h2>How to convert PNG to DXF</h2>
       <ol>
         <li>
-          <strong>Drop your PNG onto the converter.</strong> Open{" "}
-          <Link href="/">png2svg.io</Link> and drag your PNG anywhere onto the
-          page. Tracing starts automatically in your browser.
+          <strong>Drop your PNG onto the converter.</strong> The converter is
+          right at the top of this page. Drag your PNG onto it or pick a file.
+          Tracing starts automatically in your browser.
         </li>
         <li>
-          <strong>Simplify for cutting.</strong> For laser and CNC work, fewer
-          colors and smoother paths cut cleaner. Lower the color count and
-          raise smoothing before converting.
+          <strong>Choose a preset for cutting.</strong> For a single-color cut,
+          engraving, or stencil, pick Black & white to get one clean
+          silhouette. For multi-color artwork, Smaller file uses simplified
+          paths that are easier for machines to follow. Drag the compare slider
+          to check the result.
         </li>
         <li>
           <strong>Download the DXF.</strong> When tracing finishes, choose the
-          DXF export. The SVG and EPS versions are included from the same
-          conversion.
+          DXF export. The SVG and <Link href="/png-to-eps">EPS</Link> versions
+          are included from the same conversion.
         </li>
       </ol>
       <h2>Tips for cutting-ready DXF files</h2>
@@ -113,6 +148,15 @@ export default function PngToDxfPage() {
         <li>
           High-contrast artwork with bold shapes traces into the cleanest cut
           paths. Thin, noisy detail becomes fragile geometry.
+        </li>
+        <li>
+          The DXF never includes the pixel-correction layer used by the
+          Pixel-perfect SVG, so your machine will not try to cut thousands of
+          1 px squares.
+        </li>
+        <li>
+          If the result has stray specks, increase speck removal under
+          Advanced settings and convert again.
         </li>
         <li>
           Convert text and logos at the highest resolution you have so curves
