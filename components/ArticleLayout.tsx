@@ -21,6 +21,8 @@ export interface RelatedLink {
 interface ArticleLayoutProps {
   title: string;
   lede: string;
+  /** Human-readable last-updated date, shown under the lede. */
+  updated?: string;
   crumbs: Crumb[];
   jsonLd?: Record<string, unknown> | Array<Record<string, unknown>>;
   children: ReactNode;
@@ -35,6 +37,7 @@ interface ArticleLayoutProps {
 export function ArticleLayout({
   title,
   lede,
+  updated,
   crumbs,
   jsonLd,
   children,
@@ -86,6 +89,7 @@ export function ArticleLayout({
           </nav>
           <h1 className={styles.title}>{title}</h1>
           <p className={styles.lede}>{lede}</p>
+          {updated ? <p className={styles.updated}>Last updated: {updated}</p> : null}
         </div>
         {converter ? (
           <div className={styles.tool}>

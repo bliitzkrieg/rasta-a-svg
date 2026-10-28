@@ -11,7 +11,7 @@ const pages: Array<{
   changeFrequency: "weekly" | "monthly" | "yearly";
   lastModified: string;
 }> = [
-  { path: "", priority: 1, changeFrequency: "weekly", lastModified: "2026-09-30" },
+  { path: "", priority: 1, changeFrequency: "weekly", lastModified: "2026-10-28" },
   { path: "/png-to-eps", priority: 0.9, changeFrequency: "monthly", lastModified: "2026-09-30" },
   { path: "/png-to-dxf", priority: 0.9, changeFrequency: "monthly", lastModified: "2026-09-30" },
   { path: "/jpg-to-svg", priority: 0.9, changeFrequency: "monthly", lastModified: "2026-09-30" },
@@ -19,7 +19,19 @@ const pages: Array<{
   { path: "/svg-for-cricut", priority: 0.8, changeFrequency: "monthly", lastModified: "2026-09-30" },
   { path: "/logo-to-vector", priority: 0.8, changeFrequency: "monthly", lastModified: "2026-09-30" },
   { path: "/faq", priority: 0.7, changeFrequency: "monthly", lastModified: "2026-09-30" },
-  { path: "/guides", priority: 0.6, changeFrequency: "monthly", lastModified: "2026-09-30" },
+  { path: "/guides", priority: 0.6, changeFrequency: "monthly", lastModified: "2026-10-28" },
+  {
+    path: "/guides/why-is-my-svg-file-so-big",
+    priority: 0.7,
+    changeFrequency: "monthly",
+    lastModified: "2026-10-28",
+  },
+  {
+    path: "/guides/transparent-png-to-svg",
+    priority: 0.7,
+    changeFrequency: "monthly",
+    lastModified: "2026-10-28",
+  },
   {
     path: "/guides/how-to-convert-png-to-svg",
     priority: 0.7,
@@ -33,7 +45,8 @@ const pages: Array<{
     changeFrequency: "monthly",
     lastModified: "2026-09-30",
   },
-  { path: "/about", priority: 0.3, changeFrequency: "yearly", lastModified: "2026-09-30" },
+  { path: "/about", priority: 0.3, changeFrequency: "yearly", lastModified: "2026-10-28" },
+  { path: "/changelog", priority: 0.3, changeFrequency: "monthly", lastModified: "2026-10-28" },
   { path: "/privacy", priority: 0.3, changeFrequency: "yearly", lastModified: "2026-09-30" },
   { path: "/terms", priority: 0.3, changeFrequency: "yearly", lastModified: "2026-09-30" },
 ];

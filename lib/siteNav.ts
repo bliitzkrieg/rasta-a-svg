@@ -25,6 +25,8 @@ export const FOOTER_COLUMNS = [
       { href: "/guides/how-to-convert-png-to-svg", label: "How to convert PNG to SVG" },
       { href: "/guides/png-vs-svg", label: "PNG vs SVG" },
       { href: "/guides/what-is-vectorization", label: "What is vectorization" },
+      { href: "/guides/why-is-my-svg-file-so-big", label: "Why is my SVG file so big?" },
+      { href: "/guides/transparent-png-to-svg", label: "Transparent PNG to SVG" },
       { href: "/svg-for-cricut", label: "SVG files for Cricut" },
       { href: "/logo-to-vector", label: "Convert a logo to vector" },
       { href: "/guides", label: "All guides" },
@@ -34,6 +36,7 @@ export const FOOTER_COLUMNS = [
     title: "Company",
     links: [
       { href: "/about", label: "About" },
+      { href: "/changelog", label: "Changelog" },
       { href: "/privacy", label: "Privacy Policy" },
       { href: "/terms", label: "Terms of Use" },
       { href: "/faq", label: "FAQ" },

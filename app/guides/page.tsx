@@ -28,6 +28,16 @@ const guides = [
     description: "Raster pixels versus vector paths, and when each format is the right choice.",
   },
   {
+    href: "/guides/why-is-my-svg-file-so-big",
+    title: "Why is my SVG file so big?",
+    description: "Where the kilobytes go in a vector file, and how to shrink one without wrecking the artwork.",
+  },
+  {
+    href: "/guides/transparent-png-to-svg",
+    title: "Transparent PNG to SVG",
+    description: "How transparency survives tracing, and what to do when a white box comes with the logo.",
+  },
+  {
     href: "/guides/what-is-vectorization",
     title: "What is vectorization?",
     description: "How tracing turns a grid of pixels into shapes, and why some images trace better than others.",
@@ -91,6 +101,7 @@ export default function GuidesPage() {
     <ArticleLayout
       title="Guides"
       lede="Learn how vectorization works and how to get clean SVG, EPS, and DXF files from your images, whether you are cutting vinyl, sending a logo to a printer, or building a website."
+      updated="October 28, 2026"
       crumbs={[
         { label: "Home", href: "/" },
         { label: "Guides" },

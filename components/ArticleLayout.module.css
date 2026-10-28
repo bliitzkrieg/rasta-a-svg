@@ -76,6 +76,12 @@
   margin: 0 0 var(--space-8);
 }
 
+.updated {
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+  margin: -1.5rem 0 var(--space-8);
+}
+
 .prose {
   padding-bottom: var(--space-4);
 }

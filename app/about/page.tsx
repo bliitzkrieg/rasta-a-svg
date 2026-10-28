@@ -21,6 +21,7 @@ export default function AboutPage() {
     <ArticleLayout
       title="About PNG2SVG.IO"
       lede="A free, private converter that turns PNG, JPG and WebP images into layered vector files, right in your browser."
+      updated="October 28, 2026"
       crumbs={[{ label: "Home", href: "/" }, { label: "About" }]}
     >
       <h2>Why it exists</h2>
@@ -53,6 +54,14 @@ export default function AboutPage() {
       <p>
         The site is supported by ads. There are no paid tiers, file limits
         beyond 25 MB per image, or watermarks.
+      </p>
+
+      <h2>Actively maintained</h2>
+      <p>
+        PNG2SVG.IO is built and maintained by an independent developer. The
+        converter gets regular accuracy fixes, and new guides and features
+        are added as real users ask for them. Every change is listed on the{" "}
+        <Link href="/changelog">changelog</Link>.
       </p>
 
       <h2>Get in touch</h2>

@@ -32,3 +32,6 @@ Free online PNG to SVG converter. Vectorizes PNG images into clean layered SVG, 
 - Guide: How to convert PNG to SVG: https://png2svg.io/guides/how-to-convert-png-to-svg
 - Guide: PNG vs SVG: https://png2svg.io/guides/png-vs-svg
 - Guide: What is vectorization: https://png2svg.io/guides/what-is-vectorization
+- Guide: Why is my SVG file so big: https://png2svg.io/guides/why-is-my-svg-file-so-big
+- Guide: Transparent PNG to SVG: https://png2svg.io/guides/transparent-png-to-svg
+- Changelog: https://png2svg.io/changelog

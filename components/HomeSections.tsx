@@ -257,6 +257,20 @@ export function HomeSections() {
           </Link>
         </p>
       </section>
+      <section className={styles.section} aria-labelledby="new-heading">
+        <header className={styles.sectionHeader}>
+          <span className={styles.eyebrow}>What&apos;s new</span>
+          <h2 id="new-heading" className={styles.heading}>
+            Still being worked on
+          </h2>
+        </header>
+        <p className={styles.lede}>
+          Two new guides this week: why SVG files get big and how to shrink
+          them, and keeping transparency when converting a PNG. The full
+          history lives on the{" "}
+          <Link href="/changelog">changelog</Link>.
+        </p>
+      </section>
     </div>
   );
 }

@@ -1,0 +1,6 @@
+# Cloudflare Pages header rules. These cover the same asset paths as the
+# X-Robots-Tag headers in next.config.ts, at the CDN level.
+/examples/*
+  X-Robots-Tag: noindex
+/sw.js
+  X-Robots-Tag: noindex
