@@ -73,7 +73,7 @@ export function HeroDropzone({ variant, isDragging, onFiles, onTryExample }: Her
         </h1>
         <p className={styles.subhead}>
           Turn logos, icons, and illustrations into clean layered SVG, EPS, and
-          DXF files. Everything runs in your browser, so your images are never
+          DXF files with PNG2SVG.IO. Everything runs in your browser, so your images are never
           uploaded.
         </p>
         <div className={styles.actions}>

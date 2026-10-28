@@ -8,6 +8,12 @@ import styles from "./home.module.css";
 
 export const metadata: Metadata = {
   alternates: { canonical: "/" },
+  title: {
+    absolute:
+      "PNG2SVG.IO: Free PNG to SVG Converter, Pixel-Perfect, No Upload",
+  },
+  description:
+    "PNG2SVG.IO converts PNG to SVG free in your browser. Pixel-perfect layered vectors, plus EPS and DXF export. No upload, no sign-up.",
 };
 
 export default function HomePage() {
