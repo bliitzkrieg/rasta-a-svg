@@ -48,6 +48,11 @@ export default function ChangelogPage() {
       <h2>October 28, 2026</h2>
       <ul>
         <li>
+          PNG to DXF page rewritten: what the DXF export contains, how to
+          size it for laser and CNC work, and new FAQ entries on units and
+          layers.
+        </li>
+        <li>
           Two new guides:{" "}
           <Link href="/guides/why-is-my-svg-file-so-big">
             why SVG files get big and how to shrink them
