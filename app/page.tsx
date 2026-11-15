@@ -10,10 +10,10 @@ export const metadata: Metadata = {
   alternates: { canonical: "/" },
   title: {
     absolute:
-      "PNG2SVG.IO: Free PNG to SVG Converter, Pixel-Perfect, No Upload",
+      "PNG to SVG Converter: Free, Instant Vectors for Logos and Cricut",
   },
   description:
-    "PNG2SVG.IO converts PNG to SVG free in your browser. Pixel-perfect layered vectors, plus EPS and DXF export. No upload, no sign-up.",
+    "Turn a PNG into a clean, scalable SVG in seconds, free, in your browser. Sharp vectors for logos, Cricut and laser cutting, plus EPS and DXF export. No upload.",
 };
 
 export default function HomePage() {
