@@ -38,6 +38,11 @@ const faqs = [
     answer:
       "No. All vectorization runs locally in your browser using WebAssembly. Your PNG files never leave your device.",
   },
+  {
+    question: "What size is the EPS?",
+    answer:
+      "The EPS bounding box uses the traced size. Images are traced at most 1000 px on the long edge, so a larger source still produces an EPS measured in those traced pixels, not in your original image size. Scale it to the size you want in your design software: vector shapes scale cleanly.",
+  },
 ];
 
 const jsonLd = [
@@ -150,7 +155,10 @@ export default function PngToEpsPage() {
       <ul>
         <li>
           Start with the highest resolution PNG you have. More pixels give the
-          tracer more edge detail to work with.
+          tracer more edge detail to work with, up to a point: the converter
+          traces at most 1000 px on the long edge, so past that, extra
+          resolution adds nothing. The EPS bounding box uses the traced size,
+          so scale the drawing to the size you want in your design software.
         </li>
         <li>
           Logos, icons, and illustrations with flat colors convert far better

@@ -41,7 +41,7 @@ const faqs = [
   {
     question: "What units does the DXF use?",
     answer:
-      "The coordinates are in pixels, matching your image, and the file carries no unit setting. Your CAD or laser software will assume a unit on import, so set the drawing to the size you want before cutting. The size you set on import is the size that cuts.",
+      "The coordinates are in pixels, matching the traced image, and the file carries no unit setting. The traced image is at most 1000 px on the long edge, so a larger source still produces a DXF measured in those traced pixels, not in your original image size. Your CAD or laser software will assume a unit on import, so set the drawing to the size you want before cutting. The size you set on import is the size that cuts.",
   },
   {
     question: "Does each color get its own layer?",
@@ -207,10 +207,13 @@ export default function PngToDxfPage() {
       <h2>Sizing the DXF in your software</h2>
       <p>
         Because the file has no units, size it on import, before you set cut
-        order or power. In LightBurn or your CAD program, set the width and
-        height to the finished size you want, or scale the drawing from a
-        feature whose real size you know. A quick test cut on scrap confirms
-        both the size and the settings before you commit material.
+        order or power. The coordinates use the traced size, not necessarily
+        your original image size: the converter traces at most 1000 px on the
+        long edge, so a 4000 px wide source produces a DXF 1000 units wide.
+        In LightBurn or your CAD program, set the width and height to the
+        finished size you want, or scale the drawing from a feature whose real
+        size you know. A quick test cut on scrap confirms both the size and
+        the settings before you commit material.
       </p>
       <h2>Tips for cutting-ready DXF files</h2>
       <ul>
@@ -244,7 +247,9 @@ export default function PngToDxfPage() {
         </li>
         <li>
           Convert text and logos at the highest resolution you have so curves
-          stay smooth.
+          stay smooth. Past 1000 px on the long edge, extra resolution adds
+          nothing: the converter traces at most 1000 px, so a larger file
+          converts to the same traced size.
         </li>
         <li>
           Always do a test cut on scrap material before running a full job,
