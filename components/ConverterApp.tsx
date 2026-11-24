@@ -19,7 +19,7 @@ import { APP_VERSION } from "@/lib/version";
 import { trackEvent } from "@/lib/analytics";
 import { PRESETS, type PresetId } from "@/lib/presets";
 import { makeQueueItem, withUpdated } from "@/lib/queueUtils";
-import { clearAllData, deleteItemData, putFileBlob } from "@/lib/storage/indexedDb";
+import { clearTabData, deleteItemData, initTabStorage, putFileBlob } from "@/lib/storage/indexedDb";
 import { defaultPersistedState } from "@/lib/storage/localState";
 import type {
   ConversionResult,
@@ -83,11 +83,14 @@ export default function ConverterApp({
   }, []);
 
   // The queue is never restored on reload, so images and results left in
-  // IndexedDB by an earlier visit are unreachable. Clear them on mount;
-  // uploads wait for this so a quick first drop is never wiped.
+  // IndexedDB by an earlier visit are unreachable. Clear only this tab's
+  // own entries on mount: the store is shared across tabs, and clearing
+  // all of it here used to wipe another tab's in-progress conversion.
   const storageReady = useRef<Promise<void> | null>(null);
   useEffect(() => {
-    storageReady.current = clearAllData().catch(() => undefined);
+    const stopTabStorage = initTabStorage();
+    storageReady.current = clearTabData().catch(() => undefined);
+    return stopTabStorage;
   }, []);
 
   const selectedItem = useMemo(
@@ -397,7 +400,7 @@ export default function ConverterApp({
   };
 
   const onDeleteAll = () => {
-    void clearAllData();
+    void clearTabData();
     setResults({});
     setAppState((current) => ({ ...current, queue: [], selectedId: undefined }));
   };
