@@ -36,7 +36,7 @@ const faqs = [
   {
     question: "What size will my design be in Design Space?",
     answer:
-      "The SVG is written in inches, cropped to the artwork. It uses 96 pixels per inch and is capped at 11.5 inches on the longest side, so it always fits a 12 by 12 inch mat. Resize it freely in Design Space; it is a vector, so it stays sharp.",
+      "The SVG is written in inches, cropped to the artwork. It uses 96 pixels per inch and is capped at 11.5 inches on the longest side, the cutting area of a 12 by 12 inch mat. Smaller machines need a smaller design: a Cricut Joy 2, for example, cuts at most 4.25 inches wide on a mat, so resize it in Design Space before you cut. It is a vector, so resizing stays sharp.",
   },
   {
     question: "Can I use the same file with a Silhouette machine?",
@@ -148,8 +148,10 @@ export default function SvgForCricutPage() {
         </li>
         <li>
           <strong>A real size.</strong> The file is measured in inches,
-          cropped to the artwork, and never larger than 11.5 inches, so it
-          fits a 12 by 12 inch mat.
+          cropped to the artwork, and never larger than 11.5 inches, the
+          cutting area of a 12 by 12 inch mat. On a smaller machine, resize
+          it in Design Space first: a Cricut Joy 2 cuts at most 4.25 inches
+          wide on a mat.
         </li>
       </ul>
 
