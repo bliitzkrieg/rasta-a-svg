@@ -9,6 +9,8 @@ export function toDXF(result: Omit<ConversionResult, "svg" | "eps" | "dxf">): st
   const lines: string[] = [];
   add(lines, 0, "SECTION");
   add(lines, 2, "HEADER");
+  add(lines, 9, "$ACADVER");
+  add(lines, 1, "AC1015");
   add(lines, 0, "ENDSEC");
 
   add(lines, 0, "SECTION");
@@ -48,7 +50,9 @@ export function toDXF(result: Omit<ConversionResult, "svg" | "eps" | "dxf">): st
           continue;
         }
         add(lines, 0, "LWPOLYLINE");
+        add(lines, 100, "AcDbEntity");
         add(lines, 8, layer.name);
+        add(lines, 100, "AcDbPolyline");
         add(lines, 90, contour.length);
         add(lines, 70, path.closed ? 1 : 0);
         for (const point of contour) {
