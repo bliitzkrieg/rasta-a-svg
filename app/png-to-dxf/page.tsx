@@ -46,7 +46,7 @@ const faqs = [
   {
     question: "Does each color get its own layer?",
     answer:
-      "Yes. Each color becomes a separate DXF layer named COLOR_01, COLOR_02, and so on. Turn layers off to cut one color at a time, or assign different power and speed settings per layer in software that supports it.",
+      "Yes. Each color becomes a separate DXF layer named COLOR_01, COLOR_02, and so on. Turn layers off to cut one color at a time, or assign different power and speed settings per layer in software that supports it. One limit to know: DXF only has 255 color codes, so the layer colors repeat once you pass 255 layers. The layer names stay unique, but two different layers can share a color code. In software that assigns cut settings by color, like LightBurn, do not assume each color means one operation: check the layer list and reassign colors in your software before cutting.",
   },
   {
     question: "Can I send the DXF straight to my machine?",
@@ -138,6 +138,16 @@ export default function PngToDxfPage() {
         drawing to the size you want on import. The coordinates are flipped
         vertically from image space, so the drawing reads right-side up in
         CAD coordinates.
+      </p>
+      <p>
+        Layer colors repeat. DXF only defines 255 color codes, so once a
+        conversion passes 255 layers the colors start over, even though
+        every layer keeps its own unique name. A detailed image can export
+        over a thousand layers this way. If your software assigns cut
+        settings by color, as LightBurn does, two different layers sharing
+        a color will get the same settings. Check the layer list and
+        reassign colors in your software before cutting, instead of
+        assuming each color is one operation.
       </p>
       <p>
         The DXF never includes the pixel-correction layer from Pixel-perfect
