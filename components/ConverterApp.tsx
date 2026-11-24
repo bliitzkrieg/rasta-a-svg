@@ -14,6 +14,7 @@ import { usePreviewUrls } from "@/hooks/usePreviewUrls";
 import { useServiceWorkerCleanup } from "@/hooks/useServiceWorkerCleanup";
 import { downloadAsZip, downloadString } from "@/lib/download";
 import { ACCEPTED_IMAGE_TYPES, baseName, byteLength, formatBytes } from "@/lib/format";
+import { isLeavingLink } from "@/lib/leaveWarning";
 import { APP_VERSION } from "@/lib/version";
 import { trackEvent } from "@/lib/analytics";
 import { PRESETS, type PresetId } from "@/lib/presets";
@@ -96,6 +97,37 @@ export default function ConverterApp({
   const selectedResult = appState.selectedId ? results[appState.selectedId] : undefined;
   const hasImages = appState.queue.length > 0;
   const doneCount = appState.queue.filter((item) => item.status === "done").length;
+
+  // Conversions live only in memory: leaving the page discards them, and
+  // coming back opens an empty converter. Warn first when there is done
+  // work, for tab closes as well as in-app navigation. The click listener
+  // runs in the capture phase so it fires before Next.js handles the link.
+  useEffect(() => {
+    if (doneCount === 0) return;
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    const onClick = (event: MouseEvent) => {
+      const anchor = (event.target as HTMLElement).closest?.("a[href]") as HTMLAnchorElement | null;
+      if (!anchor) return;
+      if (!isLeavingLink(anchor.getAttribute("href"), window.location.pathname)) return;
+      if (
+        !window.confirm(
+          "Leaving this page discards your converted images. Download them first if you still need them.",
+        )
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    document.addEventListener("click", onClick, true);
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      document.removeEventListener("click", onClick, true);
+    };
+  }, [doneCount]);
   const svgBytes = useMemo(
     () => (selectedResult ? byteLength(selectedResult.svg) : undefined),
     [selectedResult],
